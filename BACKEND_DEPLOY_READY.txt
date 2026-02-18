@@ -62,7 +62,7 @@
 Окружение:           Node.js 24
 Фреймворк:           Express
 Команда сборки:      npm install
-Команда запуска:     pm2 start --no-daemon index.js
+Команда запуска:     node index.js
 Путь проверки:       /health
 Ветка:               main
 

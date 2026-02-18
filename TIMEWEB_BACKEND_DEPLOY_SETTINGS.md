@@ -19,7 +19,7 @@ npm install
 
 ### Команда запуска
 ```bash
-pm2 start --no-daemon index.js
+node index.js
 ```
 
 ### Путь проверки состояния

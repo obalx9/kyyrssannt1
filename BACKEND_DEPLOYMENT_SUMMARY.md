@@ -30,7 +30,7 @@ Node.js: 24
 ### Команды
 ```
 Сборка:     npm install
-Запуск:     pm2 start --no-daemon index.js
+Запуск:     node index.js
 Проверка:   /health
 ```
 

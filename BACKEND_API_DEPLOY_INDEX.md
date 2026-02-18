@@ -145,7 +145,7 @@ project/ (корень репозитория)
 Используйте: BACKEND_DEPLOY_COPY_PASTE.txt
 
 Командия сборки:        npm install
-Команда запуска:        pm2 start --no-daemon index.js
+Команда запуска:        node index.js
 Путь проверки состояния: /health
 ```
 
