@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 450">
+  <defs>
+    <linearGradient id="grad4" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#0ea5e9;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#2563eb;stop-opacity:1" />
+    </linearGradient>
+  </defs>
+  <rect width="800" height="450" fill="url(#grad4)"/>
+  <g transform="translate(400,225)">
+    <circle cx="0" cy="0" r="80" fill="rgba(255,255,255,0.2)"/>
+    <path d="M-50,30 L-30,-10 L-10,10 L10,-30 L30,0 L50,-20" fill="none" stroke="white" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+    <circle cx="-50" cy="30" r="5" fill="white"/>
+    <circle cx="-30" cy="-10" r="5" fill="white"/>
+    <circle cx="-10" cy="10" r="5" fill="white"/>
+    <circle cx="10" cy="-30" r="5" fill="white"/>
+    <circle cx="30" cy="0" r="5" fill="white"/>
+    <circle cx="50" cy="-20" r="5" fill="white"/>
+    <text x="0" y="120" font-family="Arial, sans-serif" font-size="32" font-weight="bold" fill="white" text-anchor="middle">Business Strategy</text>
+  </g>
+</svg>
