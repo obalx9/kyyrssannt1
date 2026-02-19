@@ -19,11 +19,9 @@ out
 .cache
 .parcel-cache
 .vuepress/dist
-.nuxt
 .cache/
 .output/
 .env
-.env.*.local
 .env.production.local
 .env.development.local
 .env.test.local
@@ -33,14 +31,7 @@ out
 .yarn/build-state.yml
 .yarn/install-state.gz
 .pnp.*
-tsconfig*.json
-vite.config.*
-*.config.js
-public/
-src/
-*.md
 .github/
 .editorconfig
 .prettierignore
 .prettierrc
-eslint.config.js
