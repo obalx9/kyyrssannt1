@@ -6,6 +6,7 @@ COPY package*.json ./
 COPY backend-api/package*.json ./backend-api/
 
 RUN npm ci --omit=dev
+RUN cd backend-api && npm ci --omit=dev
 
 COPY . .
 
