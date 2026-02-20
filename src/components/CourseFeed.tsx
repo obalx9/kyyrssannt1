@@ -397,15 +397,32 @@ export default function CourseFeed({
     setFilteredPosts(filtered);
 
     const items = filtered
-      .filter(post => (post.storage_path || post.telegram_file_id) && !post.has_error && (post.media_type === 'image' || post.media_type === 'video' || post.media_type === 'photo' || post.media_type === 'animation'))
-      .map(post => ({
-        id: post.id,
-        media_type: post.media_type === 'photo' ? 'image' : post.media_type === 'animation' ? 'video' : (post.media_type || 'image'),
-        file_id: post.storage_path || post.telegram_file_id || '',
-        thumbnail_file_id: post.telegram_thumbnail_file_id || undefined,
-        file_name: post.file_name || undefined,
-        messageId: post.id
-      }));
+      .filter(post => {
+        if (post.media_type === 'media_group') {
+          return post.media_items && post.media_items.length > 0 && !post.has_error;
+        }
+        return (post.storage_path || post.telegram_file_id) && !post.has_error && (post.media_type === 'image' || post.media_type === 'video' || post.media_type === 'photo' || post.media_type === 'animation');
+      })
+      .flatMap(post => {
+        if (post.media_type === 'media_group' && post.media_items) {
+          return post.media_items.map(item => ({
+            id: item.id,
+            media_type: item.media_type,
+            file_id: item.telegram_file_id || item.storage_path || '',
+            thumbnail_file_id: item.telegram_thumbnail_file_id || undefined,
+            file_name: item.file_name || undefined,
+            messageId: post.id
+          }));
+        }
+        return [{
+          id: post.id,
+          media_type: post.media_type === 'photo' ? 'image' : post.media_type === 'animation' ? 'video' : (post.media_type || 'image'),
+          file_id: post.storage_path || post.telegram_file_id || '',
+          thumbnail_file_id: post.telegram_thumbnail_file_id || undefined,
+          file_name: post.file_name || undefined,
+          messageId: post.id
+        }];
+      });
     setMediaItems(items);
   }, [searchQuery, posts]);
 
@@ -431,6 +448,9 @@ export default function CourseFeed({
             telegram_thumbnail_file_id: m.thumbnail_path || m.telegram_thumbnail_file_id || null,
             file_name: m.file_name || null,
             file_size: m.file_size || null,
+            duration: m.duration || null,
+            width: m.width || null,
+            height: m.height || null,
             order_index: m.display_order ?? m.order_index ?? 0,
           }));
           return { ...post, media_items: mediaItems };
@@ -651,9 +671,12 @@ export default function CourseFeed({
         thumbnail_file_id: item.telegram_thumbnail_file_id || undefined,
         file_name: item.file_name || undefined,
         messageId: post.id
-      }));
-      setCurrentMediaGroup(groupMediaItems);
-      setSelectedMediaIndex(initialIndex);
+      })).filter(item => item.file_id);
+
+      if (groupMediaItems.length > 0) {
+        setCurrentMediaGroup(groupMediaItems);
+        setSelectedMediaIndex(initialIndex);
+      }
     } else {
       setCurrentMediaGroup([]);
       const index = mediaItems.findIndex(item => item.id === post.id);
