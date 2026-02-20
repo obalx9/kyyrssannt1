@@ -1535,10 +1535,10 @@ app.post('/api/courses/:courseId/telegram-bot', authenticateToken, async (req, r
     }
 
     const result = await pool.query(
-      `INSERT INTO telegram_bots (course_id, bot_token, bot_username, is_active)
-       VALUES ($1, $2, $3, $4)
+      `INSERT INTO telegram_bots (course_id, seller_id, bot_token, bot_username, is_active)
+       VALUES ($1, $2, $3, $4, $5)
        RETURNING id, bot_token, bot_username, webhook_secret, is_active, created_at`,
-      [courseId, bot_token, bot_username, is_active]
+      [courseId, sellerCheck.rows[0].id, bot_token, bot_username, is_active]
     );
 
     res.json(result.rows[0]);
