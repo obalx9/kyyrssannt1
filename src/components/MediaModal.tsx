@@ -193,6 +193,7 @@ export default function MediaModal({
               mediaType="video"
               lessonId={currentMedia.messageId}
               courseWatermark={courseWatermark}
+              fileName={currentMedia.file_name}
             />
           ) : (
             <ProtectedVideoPlayer
@@ -200,6 +201,7 @@ export default function MediaModal({
               mediaType="image"
               lessonId={currentMedia.messageId}
               courseWatermark={courseWatermark}
+              fileName={currentMedia.file_name}
             />
           )}
 

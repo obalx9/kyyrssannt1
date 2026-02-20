@@ -1,5 +1,5 @@
 import { useRef, useEffect, useState } from 'react';
-import { Loader, Play, Pause, Volume2, VolumeX, Maximize, Minimize, RotateCcw, RotateCw } from 'lucide-react';
+import { Loader, Play, Pause, Volume2, VolumeX, Maximize, Minimize, RotateCcw, RotateCw, Download } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 
 interface ProtectedVideoPlayerProps {
@@ -161,6 +161,32 @@ export default function ProtectedVideoPlayer({
     const mins = Math.floor(seconds / 60);
     const secs = Math.floor(seconds % 60);
     return `${mins}:${secs.toString().padStart(2, '0')}`;
+  };
+
+  const handleDownload = async () => {
+    try {
+      const token = localStorage.getItem('token');
+      const response = await fetch(rawUrl, {
+        headers: token ? { 'Authorization': `Bearer ${token}` } : {}
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to download file');
+      }
+
+      const blob = await response.blob();
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = fileName || `download-${Date.now()}`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error('Error downloading file:', err);
+      setError('Failed to download file');
+    }
   };
 
   useEffect(() => {
@@ -501,17 +527,27 @@ export default function ProtectedVideoPlayer({
                 </span>
               </div>
 
-              <button
-                onClick={toggleFullscreen}
-                className="p-1.5 hover:bg-white/10 rounded transition-colors"
-                title="Fullscreen (F)"
-              >
-                {isFullscreen ? (
-                  <Minimize className="w-5 h-5 text-white" />
-                ) : (
-                  <Maximize className="w-5 h-5 text-white" />
-                )}
-              </button>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={handleDownload}
+                  className="p-1.5 hover:bg-white/10 rounded transition-colors"
+                  title="Download"
+                >
+                  <Download className="w-5 h-5 text-white" />
+                </button>
+
+                <button
+                  onClick={toggleFullscreen}
+                  className="p-1.5 hover:bg-white/10 rounded transition-colors"
+                  title="Fullscreen (F)"
+                >
+                  {isFullscreen ? (
+                    <Minimize className="w-5 h-5 text-white" />
+                  ) : (
+                    <Maximize className="w-5 h-5 text-white" />
+                  )}
+                </button>
+              </div>
             </div>
           </div>
         </div>
