@@ -48,6 +48,15 @@ const storage = multer.diskStorage({
   destination: (req, file, cb) => {
     const courseId = req.body.courseId;
     const lessonId = req.body.lessonId;
+
+    console.log('[MULTER] CourseId:', courseId, 'LessonId:', lessonId);
+    console.log('[MULTER] Request body:', JSON.stringify(req.body, null, 2));
+
+    if (!courseId) {
+      console.error('[MULTER] ERROR: courseId is missing!');
+      return cb(new Error('courseId is required'), null);
+    }
+
     const destPath = lessonId
       ? join(uploadsDir, courseId, lessonId)
       : join(uploadsDir, courseId);
@@ -75,10 +84,6 @@ const storage = multer.diskStorage({
 const upload = multer({
   storage,
   limits: { fileSize: 100 * 1024 * 1024 }
-});
-
-upload.on('error', (error) => {
-  console.error('[MULTER] Multer error:', error.message);
 });
 
 let sslConfig = false;
