@@ -68,6 +68,14 @@ run_migration "01_create_auth_system.sql" "1. Authentication System" || exit 1
 run_migration "02_create_platform_schema.sql" "2. Platform Schema" || exit 1
 run_migration "03_setup_rls_policies.sql" "3. RLS Policies" || exit 1
 run_migration "04_add_additional_features.sql" "4. Additional Features" || exit 1
+run_migration "05_add_students_table.sql" "5. Students Table" || exit 1
+run_migration "06_fix_schema_for_backend.sql" "6. Fix Schema for Backend" || exit 1
+run_migration "07_fix_pending_enrollments_and_fk.sql" "7. Fix Pending Enrollments" || exit 1
+run_migration "08_fix_fk_cascade.sql" "8. Fix Foreign Key Cascade" || exit 1
+run_migration "09_fix_student_pinned_posts_fk.sql" "9. Fix Student Pinned Posts" || exit 1
+run_migration "10_fix_telegram_bots_unique_course.sql" "10. Fix Telegram Bots" || exit 1
+run_migration "11_cleanup_duplicate_telegram_bots.sql" "11. Cleanup Duplicate Bots" || exit 1
+run_migration "12_fix_postgres18_compatibility_and_restore_import.sql" "12. PostgreSQL 18 Compatibility & Import" || exit 1
 
 echo -e "${GREEN}All migrations applied successfully!${NC}"
 echo ""
