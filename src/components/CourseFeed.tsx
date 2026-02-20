@@ -667,9 +667,9 @@ export default function CourseFeed({
     const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
     const apiUrl = import.meta.env.VITE_API_URL || 'https://api.keykurs.ru';
 
-    // If fileId looks like a storage path (contains /), it's a local file - use backend URL
+    // If fileId looks like a storage path (contains /), it's a local file - use backend API
     if (fileId.includes('/')) {
-      return `${apiUrl}/uploads/${fileId}`;
+      return `${apiUrl}/api/files/${fileId}`;
     }
 
     // Otherwise, use telegram-media edge function for telegram files

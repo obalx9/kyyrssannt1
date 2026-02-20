@@ -6,7 +6,7 @@ import jwt from 'jsonwebtoken';
 import crypto from 'crypto';
 import multer from 'multer';
 import { fileURLToPath } from 'url';
-import { dirname, join } from 'path';
+import { dirname, join, normalize } from 'path';
 import { mkdir, readFile } from 'fs/promises';
 import { readFileSync } from 'fs';
 
@@ -2778,6 +2778,33 @@ app.delete('/api/posts/:id/media/:mediaId', authenticateToken, async (req, res) 
     res.json({ success: true });
   } catch (error) {
     console.error('Error deleting post media:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+app.get('/api/files/*', authenticateToken, async (req, res) => {
+  try {
+    const filePath = req.params[0];
+    const fullPath = join(uploadsDir, filePath);
+
+    const normalizedPath = normalize(fullPath);
+    if (!normalizedPath.startsWith(normalize(uploadsDir))) {
+      return res.status(403).json({ error: 'Access denied' });
+    }
+
+    res.setHeader('Cache-Control', 'public, max-age=3600');
+    res.sendFile(normalizedPath, (err) => {
+      if (err) {
+        console.error('Error sending file:', err);
+        if (err.code === 'ENOENT') {
+          res.status(404).json({ error: 'File not found' });
+        } else {
+          res.status(500).json({ error: 'Error retrieving file' });
+        }
+      }
+    });
+  } catch (error) {
+    console.error('Error in /api/files route:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
