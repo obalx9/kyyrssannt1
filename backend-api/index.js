@@ -1937,6 +1937,443 @@ app.post('/api/telegram/webhook/:secret', async (req, res) => {
   }
 });
 
+app.get('/api/users/search', authenticateToken, async (req, res) => {
+  try {
+    const { query } = req.query;
+    if (!query) return res.json([]);
+
+    const isNumeric = /^\d+$/.test(query);
+    const cleanQuery = query.startsWith('@') ? query.slice(1) : query;
+
+    let result;
+    if (isNumeric) {
+      result = await pool.query(
+        'SELECT id, telegram_id, telegram_username, first_name, last_name FROM users WHERE telegram_id = $1 LIMIT 1',
+        [query]
+      );
+    } else {
+      result = await pool.query(
+        'SELECT id, telegram_id, telegram_username, first_name, last_name FROM users WHERE telegram_username = $1 LIMIT 1',
+        [cleanQuery]
+      );
+    }
+
+    res.json(result.rows);
+  } catch (error) {
+    console.error('Error searching users:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+app.get('/api/courses/:id/pending-enrollments', authenticateToken, async (req, res) => {
+  try {
+    const courseId = req.params.id;
+
+    const sellerCheck = await pool.query(
+      `SELECT c.id FROM courses c JOIN sellers s ON c.seller_id = s.id WHERE c.id = $1 AND s.user_id = $2`,
+      [courseId, req.user.userId]
+    );
+
+    if (sellerCheck.rows.length === 0) {
+      return res.status(403).json({ error: 'Not authorized' });
+    }
+
+    const result = await pool.query(
+      `SELECT id, telegram_id, telegram_username, expires_at, created_at
+       FROM pending_enrollments WHERE course_id = $1 ORDER BY created_at DESC`,
+      [courseId]
+    );
+
+    res.json(result.rows);
+  } catch (error) {
+    console.error('Error fetching pending enrollments:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+app.post('/api/courses/:id/pending-enrollments', authenticateToken, async (req, res) => {
+  try {
+    const courseId = req.params.id;
+    const { telegram_id, telegram_username, expires_at } = req.body;
+
+    const sellerCheck = await pool.query(
+      `SELECT c.id FROM courses c JOIN sellers s ON c.seller_id = s.id WHERE c.id = $1 AND s.user_id = $2`,
+      [courseId, req.user.userId]
+    );
+
+    if (sellerCheck.rows.length === 0) {
+      return res.status(403).json({ error: 'Not authorized' });
+    }
+
+    const existing = await pool.query(
+      `SELECT id FROM pending_enrollments WHERE course_id = $1 AND (
+        ($2::text IS NOT NULL AND telegram_id = $2) OR
+        ($3::text IS NOT NULL AND telegram_username = $3)
+      )`,
+      [courseId, telegram_id || null, telegram_username || null]
+    );
+
+    if (existing.rows.length > 0) {
+      return res.status(409).json({ error: 'Invitation already exists' });
+    }
+
+    const result = await pool.query(
+      `INSERT INTO pending_enrollments (course_id, telegram_id, telegram_username, granted_by, expires_at)
+       VALUES ($1, $2, $3, $4, $5) RETURNING *`,
+      [courseId, telegram_id || null, telegram_username || null, req.user.userId, expires_at || null]
+    );
+
+    res.json(result.rows[0]);
+  } catch (error) {
+    console.error('Error creating pending enrollment:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+app.delete('/api/courses/:id/pending-enrollments/:enrollmentId', authenticateToken, async (req, res) => {
+  try {
+    const { id: courseId, enrollmentId } = req.params;
+
+    const sellerCheck = await pool.query(
+      `SELECT c.id FROM courses c JOIN sellers s ON c.seller_id = s.id WHERE c.id = $1 AND s.user_id = $2`,
+      [courseId, req.user.userId]
+    );
+
+    if (sellerCheck.rows.length === 0) {
+      return res.status(403).json({ error: 'Not authorized' });
+    }
+
+    await pool.query(
+      'DELETE FROM pending_enrollments WHERE id = $1 AND course_id = $2',
+      [enrollmentId, courseId]
+    );
+
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Error deleting pending enrollment:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+app.delete('/api/enrollments/by-enrollment-id/:enrollmentId', authenticateToken, async (req, res) => {
+  try {
+    const { enrollmentId } = req.params;
+
+    const enrollmentResult = await pool.query(
+      `SELECT ce.id, ce.course_id FROM course_enrollments ce
+       JOIN courses c ON ce.course_id = c.id
+       JOIN sellers s ON c.seller_id = s.id
+       WHERE ce.id = $1 AND s.user_id = $2`,
+      [enrollmentId, req.user.userId]
+    );
+
+    if (enrollmentResult.rows.length === 0) {
+      return res.status(403).json({ error: 'Not authorized or not found' });
+    }
+
+    await pool.query('DELETE FROM course_enrollments WHERE id = $1', [enrollmentId]);
+
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Error removing enrollment:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+app.post('/api/courses/:id/enroll-by-identifier', authenticateToken, async (req, res) => {
+  try {
+    const courseId = req.params.id;
+    const { student_user_id, expires_at } = req.body;
+
+    const sellerCheck = await pool.query(
+      `SELECT c.id FROM courses c JOIN sellers s ON c.seller_id = s.id WHERE c.id = $1 AND s.user_id = $2`,
+      [courseId, req.user.userId]
+    );
+
+    if (sellerCheck.rows.length === 0) {
+      return res.status(403).json({ error: 'Not authorized' });
+    }
+
+    let studentResult = await pool.query(
+      'SELECT id FROM students WHERE user_id = $1',
+      [student_user_id]
+    );
+
+    if (studentResult.rows.length === 0) {
+      const inserted = await pool.query(
+        'INSERT INTO students (user_id) VALUES ($1) RETURNING id',
+        [student_user_id]
+      );
+      studentResult = { rows: inserted.rows };
+    }
+
+    const studentId = studentResult.rows[0].id;
+
+    const existing = await pool.query(
+      'SELECT id FROM course_enrollments WHERE course_id = $1 AND student_id = $2',
+      [courseId, studentId]
+    );
+
+    if (existing.rows.length > 0) {
+      return res.status(409).json({ error: 'Student already enrolled' });
+    }
+
+    const result = await pool.query(
+      `INSERT INTO course_enrollments (course_id, student_id, granted_by, expires_at)
+       VALUES ($1, $2, $3, $4) RETURNING *`,
+      [courseId, studentId, req.user.userId, expires_at || null]
+    );
+
+    res.json(result.rows[0]);
+  } catch (error) {
+    console.error('Error enrolling student by identifier:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+app.get('/api/courses/:id/students-full', authenticateToken, async (req, res) => {
+  try {
+    const courseId = req.params.id;
+
+    const sellerCheck = await pool.query(
+      `SELECT c.id FROM courses c JOIN sellers s ON c.seller_id = s.id WHERE c.id = $1 AND s.user_id = $2`,
+      [courseId, req.user.userId]
+    );
+
+    if (sellerCheck.rows.length === 0) {
+      return res.status(403).json({ error: 'Not authorized' });
+    }
+
+    const result = await pool.query(
+      `SELECT ce.id, ce.enrolled_at, ce.expires_at,
+              json_build_object(
+                'id', s.id,
+                'telegram_id', u.telegram_id,
+                'first_name', u.first_name,
+                'last_name', u.last_name,
+                'telegram_username', u.telegram_username
+              ) as student
+       FROM course_enrollments ce
+       JOIN students s ON ce.student_id = s.id
+       JOIN users u ON s.user_id = u.id
+       WHERE ce.course_id = $1
+       ORDER BY ce.enrolled_at DESC`,
+      [courseId]
+    );
+
+    res.json(result.rows);
+  } catch (error) {
+    console.error('Error fetching full students:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+app.put('/api/posts/:id', authenticateToken, async (req, res) => {
+  try {
+    const postId = req.params.id;
+    const { title, text_content, storage_path, file_name, file_size, media_type, telegram_file_id, telegram_thumbnail_file_id, has_error, error_message, media_count } = req.body;
+
+    const postCheck = await pool.query(
+      `SELECT cp.id FROM course_posts cp
+       JOIN courses c ON cp.course_id = c.id
+       JOIN sellers s ON c.seller_id = s.id
+       WHERE cp.id = $1 AND s.user_id = $2`,
+      [postId, req.user.userId]
+    );
+
+    if (postCheck.rows.length === 0) {
+      return res.status(403).json({ error: 'Not authorized to update this post' });
+    }
+
+    const fields = [];
+    const values = [];
+    let idx = 1;
+
+    if (title !== undefined) { fields.push(`title = $${idx++}`); values.push(title); }
+    if (text_content !== undefined) { fields.push(`text_content = $${idx++}`); values.push(text_content); }
+    if (storage_path !== undefined) { fields.push(`storage_path = $${idx++}`); values.push(storage_path); }
+    if (file_name !== undefined) { fields.push(`file_name = $${idx++}`); values.push(file_name); }
+    if (file_size !== undefined) { fields.push(`file_size = $${idx++}`); values.push(file_size); }
+    if (media_type !== undefined) { fields.push(`media_type = $${idx++}`); values.push(media_type); }
+    if (telegram_file_id !== undefined) { fields.push(`telegram_file_id = $${idx++}`); values.push(telegram_file_id); }
+    if (telegram_thumbnail_file_id !== undefined) { fields.push(`telegram_thumbnail_file_id = $${idx++}`); values.push(telegram_thumbnail_file_id); }
+    if (has_error !== undefined) { fields.push(`has_error = $${idx++}`); values.push(has_error); }
+    if (error_message !== undefined) { fields.push(`error_message = $${idx++}`); values.push(error_message); }
+    if (media_count !== undefined) { fields.push(`media_count = $${idx++}`); values.push(media_count); }
+
+    if (fields.length === 0) return res.json({ success: true });
+
+    values.push(postId);
+    const result = await pool.query(
+      `UPDATE course_posts SET ${fields.join(', ')} WHERE id = $${idx} RETURNING *`,
+      values
+    );
+
+    res.json(result.rows[0]);
+  } catch (error) {
+    console.error('Error updating post:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+app.get('/api/posts/:id/media', authenticateToken, async (req, res) => {
+  try {
+    const postId = req.params.id;
+
+    const result = await pool.query(
+      `SELECT cpm.* FROM course_post_media cpm
+       JOIN course_posts cp ON cpm.post_id = cp.id
+       JOIN courses c ON cp.course_id = c.id
+       LEFT JOIN sellers s ON c.seller_id = s.id
+       LEFT JOIN course_enrollments ce ON c.id = ce.course_id AND ce.student_id IN (
+         SELECT id FROM students WHERE user_id = $2
+       )
+       WHERE cpm.post_id = $1 AND (s.user_id = $2 OR ce.id IS NOT NULL)
+       ORDER BY cpm.order_index ASC`,
+      [postId, req.user.userId]
+    );
+
+    res.json(result.rows);
+  } catch (error) {
+    console.error('Error fetching post media:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+app.post('/api/posts/:id/media', authenticateToken, async (req, res) => {
+  try {
+    const postId = req.params.id;
+    const { media_type, storage_path, telegram_file_id, telegram_thumbnail_file_id, file_name, file_size, order_index } = req.body;
+
+    const postCheck = await pool.query(
+      `SELECT cp.id FROM course_posts cp
+       JOIN courses c ON cp.course_id = c.id
+       JOIN sellers s ON c.seller_id = s.id
+       WHERE cp.id = $1 AND s.user_id = $2`,
+      [postId, req.user.userId]
+    );
+
+    if (postCheck.rows.length === 0) {
+      return res.status(403).json({ error: 'Not authorized' });
+    }
+
+    const result = await pool.query(
+      `INSERT INTO course_post_media (post_id, media_type, storage_path, telegram_file_id, telegram_thumbnail_file_id, file_name, file_size, order_index)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING *`,
+      [postId, media_type, storage_path || null, telegram_file_id || null, telegram_thumbnail_file_id || null, file_name || null, file_size || null, order_index ?? 0]
+    );
+
+    res.json(result.rows[0]);
+  } catch (error) {
+    console.error('Error adding post media:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+app.put('/api/posts/:id/media/:mediaId', authenticateToken, async (req, res) => {
+  try {
+    const { id: postId, mediaId } = req.params;
+    const { order_index } = req.body;
+
+    const postCheck = await pool.query(
+      `SELECT cp.id FROM course_posts cp
+       JOIN courses c ON cp.course_id = c.id
+       JOIN sellers s ON c.seller_id = s.id
+       WHERE cp.id = $1 AND s.user_id = $2`,
+      [postId, req.user.userId]
+    );
+
+    if (postCheck.rows.length === 0) {
+      return res.status(403).json({ error: 'Not authorized' });
+    }
+
+    const result = await pool.query(
+      'UPDATE course_post_media SET order_index = $1 WHERE id = $2 AND post_id = $3 RETURNING *',
+      [order_index, mediaId, postId]
+    );
+
+    res.json(result.rows[0]);
+  } catch (error) {
+    console.error('Error updating post media:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+app.delete('/api/posts/:id/media/:mediaId', authenticateToken, async (req, res) => {
+  try {
+    const { id: postId, mediaId } = req.params;
+
+    const postCheck = await pool.query(
+      `SELECT cp.id FROM course_posts cp
+       JOIN courses c ON cp.course_id = c.id
+       JOIN sellers s ON c.seller_id = s.id
+       WHERE cp.id = $1 AND s.user_id = $2`,
+      [postId, req.user.userId]
+    );
+
+    if (postCheck.rows.length === 0) {
+      return res.status(403).json({ error: 'Not authorized' });
+    }
+
+    await pool.query('DELETE FROM course_post_media WHERE id = $1 AND post_id = $2', [mediaId, postId]);
+
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Error deleting post media:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+app.get('/api/telegram/file/:fileId', authenticateToken, async (req, res) => {
+  try {
+    const { fileId } = req.params;
+    const { course_id } = req.query;
+
+    const botResult = await pool.query(
+      `SELECT tb.bot_token FROM telegram_bots tb
+       WHERE tb.course_id = $1 AND tb.is_active = true
+       LIMIT 1`,
+      [course_id]
+    );
+
+    if (botResult.rows.length === 0) {
+      const fallbackResult = await pool.query(
+        'SELECT bot_token FROM telegram_bots WHERE is_active = true ORDER BY created_at DESC LIMIT 1'
+      );
+      if (fallbackResult.rows.length === 0) {
+        return res.status(404).json({ error: 'No bot configured' });
+      }
+      botResult.rows.push(fallbackResult.rows[0]);
+    }
+
+    const botToken = botResult.rows[0].bot_token;
+
+    const fileInfoResponse = await fetch(`https://api.telegram.org/bot${botToken}/getFile?file_id=${encodeURIComponent(fileId)}`);
+    const fileInfo = await fileInfoResponse.json();
+
+    if (!fileInfo.ok) {
+      return res.status(404).json({ error: 'File not found in Telegram' });
+    }
+
+    const filePath = fileInfo.result.file_path;
+    const fileResponse = await fetch(`https://api.telegram.org/file/bot${botToken}/${filePath}`);
+
+    if (!fileResponse.ok) {
+      return res.status(502).json({ error: 'Failed to fetch file from Telegram' });
+    }
+
+    const contentType = fileResponse.headers.get('content-type') || 'application/octet-stream';
+    res.setHeader('Content-Type', contentType);
+    res.setHeader('Cache-Control', 'public, max-age=3600');
+
+    const buffer = await fileResponse.arrayBuffer();
+    res.send(Buffer.from(buffer));
+  } catch (error) {
+    console.error('Error fetching Telegram file:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 if (process.env.NODE_ENV === 'production') {
   const buildPath = join(__dirname, '..', 'build');
 

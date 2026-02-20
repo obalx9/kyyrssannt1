@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useLanguage } from '../contexts/LanguageContext';
+import { apiClient } from '../lib/api';
 import { ArrowLeft, Save, Eye, EyeOff, Settings, Search, Upload, X, Users, Send, ExternalLink, Palette, Copy, Check } from 'lucide-react';
 import CourseFeed from '../components/CourseFeed';
 import ThemeToggle from '../components/ThemeToggle';
@@ -71,25 +72,9 @@ export default function CourseEdit() {
     if (!courseId) return;
     try {
       const token = localStorage.getItem('auth_token');
-      if (!token) return;
-
-      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-      const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
-
-      const response = await fetch(
-        `${supabaseUrl}/rest/v1/course_posts?course_id=eq.${courseId}&order=created_at.desc&limit=3`,
-        {
-          headers: {
-            'apikey': supabaseKey,
-            'Authorization': `Bearer ${token}`
-          }
-        }
-      );
-
-      if (response.ok) {
-        const data = await response.json();
-        setPreviewPosts(data);
-      }
+      if (token) apiClient.setToken(token);
+      const data = await apiClient.getCoursePosts(courseId, 3, 0);
+      setPreviewPosts(data || []);
     } catch (error) {
       console.error('Error loading preview posts:', error);
     }
@@ -111,47 +96,33 @@ export default function CourseEdit() {
         navigate('/login');
         return;
       }
+      apiClient.setToken(token);
 
-      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-      const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+      const courseData = await apiClient.getCourse(courseId!);
 
-      const response = await fetch(
-        `${supabaseUrl}/rest/v1/courses?id=eq.${courseId}`,
-        {
-          headers: {
-            'apikey': supabaseKey,
-            'Authorization': `Bearer ${token}`
-          }
-        }
-      );
-
-      if (!response.ok) throw new Error('Failed to load course');
-
-      const data = await response.json();
-      if (!data || data.length === 0) {
+      if (!courseData) {
         alert(t('courseNotFound'));
         navigate('/seller/dashboard');
         return;
       }
 
-      const course = data[0];
-      setCourse(course);
-      setTitle(course.title);
-      setDescription(course.description || '');
-      setIsPublished(course.is_published);
-      setThumbnailUrl(course.thumbnail_url);
-      setAutoplayVideos(course.autoplay_videos || false);
-      setReversePostOrder(course.reverse_post_order || false);
-      setShowPostDates(course.show_post_dates || false);
-      setShowLessonNumbers(course.show_lesson_numbers != null ? course.show_lesson_numbers : true);
-      setCompactView(course.compact_view || false);
-      setAllowDownloads(course.allow_downloads != null ? course.allow_downloads : true);
-      setWatermark(course.watermark || '');
+      setCourse(courseData);
+      setTitle(courseData.title);
+      setDescription(courseData.description || '');
+      setIsPublished(courseData.is_published);
+      setThumbnailUrl(courseData.thumbnail_url);
+      setAutoplayVideos(courseData.autoplay_videos || false);
+      setReversePostOrder(courseData.reverse_post_order || false);
+      setShowPostDates(courseData.show_post_dates || false);
+      setShowLessonNumbers(courseData.show_lesson_numbers != null ? courseData.show_lesson_numbers : true);
+      setCompactView(courseData.compact_view || false);
+      setAllowDownloads(courseData.allow_downloads != null ? courseData.allow_downloads : true);
+      setWatermark(courseData.watermark || '');
 
-      if (course.theme_config) {
-        setThemeConfig(course.theme_config);
-      } else if (course.theme_preset) {
-        const preset = themePresets.find(p => p.id === course.theme_preset);
+      if (courseData.theme_config) {
+        setThemeConfig(courseData.theme_config);
+      } else if (courseData.theme_preset) {
+        const preset = themePresets.find(p => p.id === courseData.theme_preset);
         if (preset) {
           setThemeConfig(preset.config);
         }
@@ -174,35 +145,16 @@ export default function CourseEdit() {
     try {
       const token = localStorage.getItem('auth_token');
       if (!token) throw new Error('No auth token');
+      apiClient.setToken(token);
 
-      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-      const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+      await apiClient.updateCourse(courseId, {
+        title,
+        description,
+        is_published: isPublished,
+        theme_config: themeConfig,
+        watermark_text: watermark || undefined,
+      } as any);
 
-      const response = await fetch(`${supabaseUrl}/rest/v1/courses?id=eq.${courseId}`, {
-        method: 'PATCH',
-        headers: {
-          'Content-Type': 'application/json',
-          'apikey': supabaseKey,
-          'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify({
-          title,
-          description,
-          is_published: isPublished,
-          thumbnail_url: thumbnailUrl,
-          autoplay_videos: autoplayVideos,
-          reverse_post_order: reversePostOrder,
-          show_post_dates: showPostDates,
-          show_lesson_numbers: showLessonNumbers,
-          compact_view: compactView,
-          allow_downloads: allowDownloads,
-          watermark: watermark || null,
-          theme_preset: null,
-          theme_config: themeConfig,
-        })
-      });
-
-      if (!response.ok) throw new Error('Failed to update course');
       alert(t('courseUpdated'));
     } catch (error) {
       console.error('Error updating course:', error);
@@ -212,35 +164,16 @@ export default function CourseEdit() {
     }
   };
 
-  const handleThumbnailUpload = (storagePath: string, fileSize: number, fileName: string) => {
-    const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-    const thumbnailFullUrl = `${supabaseUrl}/storage/v1/object/public/course-media/${storagePath}`;
+  const handleThumbnailUpload = (storagePath: string, _fileSize: number, _fileName: string) => {
+    const apiUrl = import.meta.env.VITE_API_URL || '';
+    const thumbnailFullUrl = `${apiUrl}/uploads/${storagePath}`;
     setThumbnailUrl(thumbnailFullUrl);
     setUploadingThumbnail(false);
   };
 
   const handleRemoveThumbnail = async () => {
     if (!thumbnailUrl || !confirm(t('deleteMediaConfirm'))) return;
-
-    try {
-      if (thumbnailUrl.includes('/course-media/')) {
-        const token = localStorage.getItem('auth_token');
-        if (token) {
-          const path = thumbnailUrl.split('/course-media/')[1];
-          const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-
-          await fetch(`${supabaseUrl}/storage/v1/object/course-media/${path}`, {
-            method: 'DELETE',
-            headers: {
-              'Authorization': `Bearer ${token}`
-            }
-          });
-        }
-      }
-      setThumbnailUrl(null);
-    } catch (error) {
-      console.error('Error removing thumbnail:', error);
-    }
+    setThumbnailUrl(null);
   };
 
   const handleCopyId = async () => {

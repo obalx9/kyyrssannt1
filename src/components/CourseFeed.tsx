@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { useLanguage } from '../contexts/LanguageContext';
 import { useScrollPreferences } from '../contexts/ScrollPreferencesContext';
 import { useTheme } from '../contexts/ThemeContext';
+import { apiClient } from '../lib/api';
 import { Search, Video, Calendar, Edit2, Trash2, X, Save, Upload, Plus, AlertTriangle, ArrowUp, ArrowDown, Pin } from 'lucide-react';
 import FileUpload from './FileUpload';
 import MediaModal from './MediaModal';
@@ -193,40 +194,10 @@ export default function CourseFeed({
     try {
       const token = localStorage.getItem('auth_token');
       if (!token) return;
+      apiClient.setToken(token);
 
-      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-      const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
-
-      // Get user ID from token or API call
-      const userResponse = await fetch(`${supabaseUrl}/rest/v1/rpc/get_current_user`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'apikey': supabaseKey,
-          'Authorization': `Bearer ${token}`
-        }
-      });
-
-      if (!userResponse.ok) return;
-
-      const userData = await userResponse.json();
-      const userId = userData?.id;
-      if (!userId) return;
-
-      const response = await fetch(
-        `${supabaseUrl}/rest/v1/student_pinned_posts?student_id=eq.${userId}&course_id=eq.${courseId}&select=post_id`,
-        {
-          headers: {
-            'apikey': supabaseKey,
-            'Authorization': `Bearer ${token}`
-          }
-        }
-      );
-
-      if (!response.ok) throw new Error('Failed to load pinned posts');
-
-      const data = await response.json();
-      const pinnedIds = new Set((data || []).map((p: any) => p.post_id));
+      const data = await apiClient.getPinnedPosts(courseId);
+      const pinnedIds = new Set<string>((data || []).map((p: any) => p.post_id));
       setPinnedPostIds(pinnedIds);
     } catch (error) {
       console.error('Error loading pinned posts:', error);
@@ -251,66 +222,12 @@ export default function CourseFeed({
         setPinnedPostIds(oldPinnedIds);
         return;
       }
-
-      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-      const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
-
-      // Get user ID
-      const userResponse = await fetch(`${supabaseUrl}/rest/v1/rpc/get_current_user`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'apikey': supabaseKey,
-          'Authorization': `Bearer ${token}`
-        }
-      });
-
-      if (!userResponse.ok) {
-        setPinnedPostIds(oldPinnedIds);
-        return;
-      }
-
-      const userData = await userResponse.json();
-      const userId = userData?.id;
-
-      if (!userId) {
-        setPinnedPostIds(oldPinnedIds);
-        return;
-      }
+      apiClient.setToken(token);
 
       if (isPinned) {
-        const response = await fetch(
-          `${supabaseUrl}/rest/v1/student_pinned_posts?student_id=eq.${userId}&post_id=eq.${postId}&course_id=eq.${courseId}`,
-          {
-            method: 'DELETE',
-            headers: {
-              'apikey': supabaseKey,
-              'Authorization': `Bearer ${token}`
-            }
-          }
-        );
-
-        if (!response.ok) throw new Error('Failed to unpin post');
+        await apiClient.unpinPost(postId);
       } else {
-        const response = await fetch(
-          `${supabaseUrl}/rest/v1/student_pinned_posts`,
-          {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'apikey': supabaseKey,
-              'Authorization': `Bearer ${token}`,
-              'Prefer': 'return=minimal'
-            },
-            body: JSON.stringify({
-              student_id: userId,
-              course_id: courseId,
-              post_id: postId
-            })
-          }
-        );
-
-        if (!response.ok && response.status !== 409) throw new Error('Failed to pin post');
+        await apiClient.pinPost(postId);
       }
 
       await loadPinnedPosts();
@@ -499,46 +416,24 @@ export default function CourseFeed({
         setLoading(false);
         return;
       }
+      apiClient.setToken(token);
 
-      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-      const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+      const postsData = await apiClient.getCoursePosts(courseId, 200, 0);
 
-      const reverseOrder = courseSettings?.reverse_post_order || false;
-      const orderParam = reverseOrder ? 'published_at.asc' : 'published_at.desc';
-      const errorFilter = !editable ? '&has_error=eq.false' : '';
-
-      const response = await fetch(
-        `${supabaseUrl}/rest/v1/course_posts?course_id=eq.${courseId}${errorFilter}&order=${orderParam}`,
-        {
-          headers: {
-            'apikey': supabaseKey,
-            'Authorization': `Bearer ${token}`
-          }
-        }
-      );
-
-      if (!response.ok) throw new Error('Failed to load posts');
-
-      const postsData = await response.json();
-
-      const postsWithMedia = await Promise.all((postsData || []).map(async (post: any) => {
-        if (post.media_count > 0 || post.media_type === 'media_group') {
-          const mediaResponse = await fetch(
-            `${supabaseUrl}/rest/v1/course_post_media?post_id=eq.${post.id}&order=order_index.asc`,
-            {
-              headers: {
-                'apikey': supabaseKey,
-                'Authorization': `Bearer ${token}`
-              }
-            }
-          );
-
-          if (mediaResponse.ok) {
-            const mediaItems = await mediaResponse.json();
-            if (mediaItems && mediaItems.length > 0) {
-              return { ...post, media_items: mediaItems };
-            }
-          }
+      const postsWithMedia = (postsData || []).map((post: any) => {
+        if (post.media && post.media.length > 0) {
+          const mediaItems = post.media.map((m: any) => ({
+            id: m.id,
+            post_id: post.id,
+            media_type: m.media_type,
+            storage_path: m.file_path || m.storage_path || null,
+            telegram_file_id: m.telegram_file_id || null,
+            telegram_thumbnail_file_id: m.thumbnail_path || m.telegram_thumbnail_file_id || null,
+            file_name: m.file_name || null,
+            file_size: m.file_size || null,
+            order_index: m.display_order ?? m.order_index ?? 0,
+          }));
+          return { ...post, media_items: mediaItems };
         }
 
         if ((post.storage_path || post.telegram_file_id) && !post.media_items) {
@@ -560,7 +455,7 @@ export default function CourseFeed({
         }
 
         return post;
-      }));
+      });
 
       setPosts(postsWithMedia || []);
       setFilteredPosts(postsWithMedia || []);
@@ -617,116 +512,43 @@ export default function CourseFeed({
     try {
       const token = localStorage.getItem('auth_token');
       if (!token) throw new Error('No auth token');
-
-      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-      const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+      apiClient.setToken(token);
 
       if (editingPostId) {
-        const oldPost = posts.find(p => p.id === editingPostId);
-
-        if (oldPost?.storage_path && oldPost.storage_path !== formData.storage_path && formData.storage_path) {
-          await fetch(`${supabaseUrl}/storage/v1/object/course-media/${oldPost.storage_path}`, {
-            method: 'DELETE',
-            headers: {
-              'Authorization': `Bearer ${token}`
-            }
-          });
-        }
-
-        const response = await fetch(`${supabaseUrl}/rest/v1/course_posts?id=eq.${editingPostId}`, {
-          method: 'PATCH',
-          headers: {
-            'Content-Type': 'application/json',
-            'apikey': supabaseKey,
-            'Authorization': `Bearer ${token}`
-          },
-          body: JSON.stringify({
-            title: formData.title,
-            text_content: formData.text_content,
-            storage_path: formData.storage_path || null,
-            file_name: formData.file_name || null,
-            file_size: formData.file_size || null,
-            media_type: formData.media_type || null,
-            telegram_file_id: null,
-            telegram_thumbnail_file_id: null,
-            has_error: false,
-            error_message: null,
-          })
+        await apiClient.updatePost(editingPostId, {
+          title: formData.title,
+          text_content: formData.text_content,
+          storage_path: formData.storage_path || null,
+          file_name: formData.file_name || null,
+          file_size: formData.file_size || null,
+          media_type: formData.media_type || null,
+          telegram_file_id: null,
+          telegram_thumbnail_file_id: null,
+          has_error: false,
+          error_message: null,
         });
-
-        if (!response.ok) throw new Error('Failed to update post');
         alert(t('postUpdated'));
       } else {
         if (newPostMediaFiles.length > 1) {
-          const postResponse = await fetch(`${supabaseUrl}/rest/v1/course_posts`, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'apikey': supabaseKey,
-              'Authorization': `Bearer ${token}`,
-              'Prefer': 'return=representation'
-            },
-            body: JSON.stringify({
-              course_id: courseId,
-              source_type: 'manual',
-              title: formData.title,
-              text_content: formData.text_content,
-              has_error: false,
-              order_index: posts.length,
-              media_count: newPostMediaFiles.length,
-            })
-          });
-
-          if (!postResponse.ok) throw new Error('Failed to create post');
-
-          const [newPost] = await postResponse.json();
-
-          await Promise.all(
-            newPostMediaFiles.map((file, index) =>
-              fetch(`${supabaseUrl}/rest/v1/course_post_media`, {
-                method: 'POST',
-                headers: {
-                  'Content-Type': 'application/json',
-                  'apikey': supabaseKey,
-                  'Authorization': `Bearer ${token}`,
-                },
-                body: JSON.stringify({
-                  post_id: newPost.id,
-                  media_type: file.media_type,
-                  storage_path: file.storage_path,
-                  file_name: file.file_name,
-                  file_size: file.file_size,
-                  order_index: index,
-                })
-              })
-            )
-          );
-
+          const newPost = await apiClient.createCoursePost(courseId, {
+            text_content: formData.text_content,
+            media: newPostMediaFiles.map((file, index) => ({
+              media_type: file.media_type,
+              file_path: file.storage_path,
+              file_size: file.file_size,
+            })),
+          } as any);
           alert(t('postCreated'));
         } else {
-          const response = await fetch(`${supabaseUrl}/rest/v1/course_posts`, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'apikey': supabaseKey,
-              'Authorization': `Bearer ${token}`,
-              'Prefer': 'return=minimal'
-            },
-            body: JSON.stringify({
-              course_id: courseId,
-              source_type: 'manual',
-              title: formData.title,
-              text_content: formData.text_content,
-              storage_path: newPostMediaFiles[0]?.storage_path || null,
-              file_name: newPostMediaFiles[0]?.file_name || null,
-              file_size: newPostMediaFiles[0]?.file_size || null,
-              media_type: newPostMediaFiles[0]?.media_type || null,
-              has_error: false,
-              order_index: posts.length,
-            })
-          });
-
-          if (!response.ok) throw new Error('Failed to create post');
+          const singleMedia = newPostMediaFiles[0];
+          await apiClient.createCoursePost(courseId, {
+            text_content: formData.text_content,
+            media: singleMedia ? [{
+              media_type: singleMedia.media_type,
+              file_path: singleMedia.storage_path,
+              file_size: singleMedia.file_size,
+            }] : undefined,
+          } as any);
           alert(t('postCreated'));
         }
       }
@@ -745,19 +567,8 @@ export default function CourseFeed({
     try {
       const token = localStorage.getItem('auth_token');
       if (!token) throw new Error('No auth token');
-
-      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-      const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
-
-      const response = await fetch(`${supabaseUrl}/rest/v1/course_posts?id=eq.${postId}`, {
-        method: 'DELETE',
-        headers: {
-          'apikey': supabaseKey,
-          'Authorization': `Bearer ${token}`
-        }
-      });
-
-      if (!response.ok) throw new Error('Failed to delete post');
+      apiClient.setToken(token);
+      await apiClient.deletePost(postId);
       loadPosts();
     } catch (error) {
       console.error('Error deleting post:', error);

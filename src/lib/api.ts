@@ -233,6 +233,119 @@ export class ApiClient {
       method: 'DELETE',
     });
   }
+
+  async searchUsers(query: string) {
+    return this.request(`/api/users/search?query=${encodeURIComponent(query)}`);
+  }
+
+  async getCourseStudentsFull(courseId: string) {
+    return this.request(`/api/courses/${courseId}/students-full`);
+  }
+
+  async getPendingEnrollments(courseId: string) {
+    return this.request(`/api/courses/${courseId}/pending-enrollments`);
+  }
+
+  async createPendingEnrollment(courseId: string, data: {
+    telegram_id?: string | null;
+    telegram_username?: string | null;
+    expires_at?: string | null;
+  }) {
+    return this.request(`/api/courses/${courseId}/pending-enrollments`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async deletePendingEnrollment(courseId: string, enrollmentId: string) {
+    return this.request(`/api/courses/${courseId}/pending-enrollments/${enrollmentId}`, {
+      method: 'DELETE',
+    });
+  }
+
+  async removeEnrollmentById(enrollmentId: string) {
+    return this.request(`/api/enrollments/by-enrollment-id/${enrollmentId}`, {
+      method: 'DELETE',
+    });
+  }
+
+  async enrollStudentByUserId(courseId: string, studentUserId: string, expiresAt: string | null) {
+    return this.request(`/api/courses/${courseId}/enroll-by-identifier`, {
+      method: 'POST',
+      body: JSON.stringify({ student_user_id: studentUserId, expires_at: expiresAt }),
+    });
+  }
+
+  async updatePost(postId: string, data: Partial<{
+    title: string;
+    text_content: string;
+    storage_path: string | null;
+    file_name: string | null;
+    file_size: number | null;
+    media_type: string | null;
+    telegram_file_id: string | null;
+    telegram_thumbnail_file_id: string | null;
+    has_error: boolean;
+    error_message: string | null;
+    media_count: number;
+  }>) {
+    return this.request(`/api/posts/${postId}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async getPostMedia(postId: string) {
+    return this.request(`/api/posts/${postId}/media`);
+  }
+
+  async addPostMedia(postId: string, data: {
+    media_type: string;
+    storage_path?: string | null;
+    telegram_file_id?: string | null;
+    telegram_thumbnail_file_id?: string | null;
+    file_name?: string | null;
+    file_size?: number | null;
+    order_index?: number;
+  }) {
+    return this.request(`/api/posts/${postId}/media`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async updatePostMedia(postId: string, mediaId: string, data: { order_index: number }) {
+    return this.request(`/api/posts/${postId}/media/${mediaId}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async deletePostMedia(postId: string, mediaId: string) {
+    return this.request(`/api/posts/${postId}/media/${mediaId}`, {
+      method: 'DELETE',
+    });
+  }
+
+  getMediaUrl(storagePath: string): string {
+    return `${API_URL}/uploads/${storagePath}`;
+  }
+
+  async getTelegramFileUrl(fileId: string, courseId: string): Promise<string> {
+    const token = this.token || localStorage.getItem('auth_token') || '';
+    const response = await fetch(
+      `${API_URL}/api/telegram/file/${encodeURIComponent(fileId)}?course_id=${encodeURIComponent(courseId)}`,
+      { headers: { 'Authorization': `Bearer ${token}` } }
+    );
+    if (!response.ok) throw new Error(`Failed to fetch Telegram file: ${response.status}`);
+    const blob = await response.blob();
+    return URL.createObjectURL(blob);
+  }
+
+  buildTelegramFileUrl(fileId: string, courseId: string): string {
+    const token = this.token || localStorage.getItem('auth_token') || '';
+    return `${API_URL}/api/telegram/file/${encodeURIComponent(fileId)}?course_id=${encodeURIComponent(courseId)}&token=${encodeURIComponent(token)}`;
+  }
 }
 
 export const apiClient = new ApiClient();

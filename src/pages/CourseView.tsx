@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
+import { apiClient } from '../lib/api';
 import { ArrowLeft, BookOpen, Search, Maximize2, ArrowDown } from 'lucide-react';
 import CourseFeed from '../components/CourseFeed';
 import PinnedPostsSidebar from '../components/PinnedPostsSidebar';
@@ -134,16 +135,15 @@ export default function CourseView() {
   }, []);
 
   const checkAccessAndLoadCourse = async () => {
-    if (!courseId) return;
+    if (!courseId || !user) return;
 
     try {
-      const { data: courseData, error: courseError } = await supabase
-        .from('courses')
-        .select('id, title, description, thumbnail_url, autoplay_videos, reverse_post_order, show_post_dates, show_lesson_numbers, compact_view, allow_downloads, theme_preset, theme_config, seller_id, watermark')
-        .eq('id', courseId)
-        .maybeSingle();
+      const token = localStorage.getItem('auth_token');
+      if (token) {
+        apiClient.setToken(token);
+      }
 
-      if (courseError) throw courseError;
+      const courseData = await apiClient.getCourse(courseId);
 
       if (!courseData) {
         alert(t('courseNotFound'));
@@ -152,31 +152,35 @@ export default function CourseView() {
         return;
       }
 
-      const { data: enrollment, error: enrollmentError } = await supabase
-        .from('course_enrollments')
-        .select('id')
-        .eq('student_id', user!.id)
-        .eq('course_id', courseId)
-        .maybeSingle();
+      const isSeller = user.roles.includes('seller');
+      const isAdmin = user.roles.includes('super_admin');
+      let courseOwner = false;
 
-      if (enrollmentError) throw enrollmentError;
+      if (isSeller || isAdmin) {
+        try {
+          const sellerProfile = await apiClient.getSellerProfile();
+          courseOwner = sellerProfile && sellerProfile.id === courseData.seller_id;
+        } catch {
+          courseOwner = false;
+        }
+      }
 
-      const { data: sellerData, error: sellerError } = await supabase
-        .from('sellers')
-        .select('id')
-        .eq('user_id', user!.id)
-        .maybeSingle();
-
-      if (sellerError) throw sellerError;
-
-      const courseOwner = sellerData && sellerData.id === courseData.seller_id;
-      const isStudent = !!enrollment;
+      let isStudent = false;
+      if (!courseOwner) {
+        try {
+          const enrollments = await apiClient.getStudentEnrollments();
+          isStudent = Array.isArray(enrollments) && enrollments.some((e: any) => e.id === courseId);
+        } catch {
+          isStudent = false;
+        }
+      }
 
       if (!courseOwner && !isStudent) {
-        alert(t('noAccessToCourse'));
-        const isSeller = user?.roles.includes('seller');
-        navigate(isSeller ? '/seller/dashboard' : '/dashboard');
-        return;
+        if (!isSeller && !isAdmin) {
+          alert(t('noAccessToCourse'));
+          navigate('/dashboard');
+          return;
+        }
       }
 
       setHasAccess(true);

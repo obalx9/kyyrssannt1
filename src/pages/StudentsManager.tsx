@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useLanguage } from '../contexts/LanguageContext';
+import { apiClient } from '../lib/api';
 import { ArrowLeft, UserPlus, Trash2, Calendar, Users, Clock } from 'lucide-react';
 import ThemeToggle from '../components/ThemeToggle';
 import ConfirmDialog from '../components/ConfirmDialog';
@@ -69,58 +70,22 @@ export default function StudentsManager() {
         navigate('/login');
         return;
       }
+      apiClient.setToken(token);
 
-      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-      const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
-
-      const courseResponse = await fetch(
-        `${supabaseUrl}/rest/v1/courses?id=eq.${courseId}&select=id,title`,
-        {
-          headers: {
-            'apikey': supabaseKey,
-            'Authorization': `Bearer ${token}`
-          }
-        }
-      );
-
-      if (!courseResponse.ok) throw new Error('Failed to load course');
-
-      const courseData = await courseResponse.json();
-      if (!courseData || courseData.length === 0) {
+      const courseData = await apiClient.getCourse(courseId!);
+      if (!courseData) {
         alert(t('courseNotFoundAlert'));
         navigate('/seller/dashboard');
         return;
       }
-      setCourse(courseData[0]);
+      setCourse(courseData);
 
-      const enrollmentsResponse = await fetch(
-        `${supabaseUrl}/rest/v1/course_enrollments?course_id=eq.${courseId}&select=id,enrolled_at,expires_at,student:student_id(id,telegram_id,first_name,last_name,telegram_username)&order=enrolled_at.desc`,
-        {
-          headers: {
-            'apikey': supabaseKey,
-            'Authorization': `Bearer ${token}`
-          }
-        }
-      );
+      const [enrollmentsData, pendingData] = await Promise.all([
+        apiClient.getCourseStudentsFull(courseId!),
+        apiClient.getPendingEnrollments(courseId!),
+      ]);
 
-      if (!enrollmentsResponse.ok) throw new Error('Failed to load enrollments');
-
-      const enrollmentsData = await enrollmentsResponse.json();
       setEnrollments(enrollmentsData || []);
-
-      const pendingResponse = await fetch(
-        `${supabaseUrl}/rest/v1/pending_enrollments?course_id=eq.${courseId}&select=id,telegram_id,telegram_username,expires_at,created_at&order=created_at.desc`,
-        {
-          headers: {
-            'apikey': supabaseKey,
-            'Authorization': `Bearer ${token}`
-          }
-        }
-      );
-
-      if (!pendingResponse.ok) throw new Error('Failed to load pending enrollments');
-
-      const pendingData = await pendingResponse.json();
       setPendingEnrollments(pendingData || []);
     } catch (error) {
       console.error('Error loading data:', error);
@@ -146,110 +111,52 @@ export default function StudentsManager() {
         setAdding(false);
         return;
       }
-
-      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-      const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
-
-      const queryParam = isNumeric
-        ? `telegram_id=eq.${identifier}`
-        : `telegram_username=eq.${cleanUsername}`;
-
-      const studentResponse = await fetch(
-        `${supabaseUrl}/rest/v1/users?${queryParam}&select=id`,
-        {
-          headers: {
-            'apikey': supabaseKey,
-            'Authorization': `Bearer ${token}`
-          }
-        }
-      );
-
-      if (!studentResponse.ok) {
-        console.error('Error finding student');
-        alert(`${t('failedToFindStudent')}: Failed to query user`);
-        setAdding(false);
-        return;
-      }
-
-      const students = await studentResponse.json();
-      const studentData = students && students.length > 0 ? students[0] : null;
+      apiClient.setToken(token);
 
       const expiryDaysNum = parseInt(expiryDays) || 0;
       const expiresAt = expiryDaysNum > 0
         ? new Date(Date.now() + expiryDaysNum * 24 * 60 * 60 * 1000).toISOString()
         : null;
 
+      const users = await apiClient.searchUsers(identifier);
+      const studentData = Array.isArray(users) && users.length > 0 ? users[0] : null;
+
       if (!studentData) {
-        const pendingResponse = await fetch(`${supabaseUrl}/rest/v1/pending_enrollments`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'apikey': supabaseKey,
-            'Authorization': `Bearer ${token}`,
-            'Prefer': 'return=minimal'
-          },
-          body: JSON.stringify({
-            course_id: courseId,
+        try {
+          await apiClient.createPendingEnrollment(courseId, {
             telegram_id: isNumeric ? identifier : null,
             telegram_username: isNumeric ? null : cleanUsername,
-            granted_by: user.id,
             expires_at: expiresAt,
-          })
-        });
-
-        if (!pendingResponse.ok) {
-          console.error('Error creating pending enrollment');
-          if (pendingResponse.status === 409) {
+          });
+          alert(t('invitationCreated'));
+          setShowAddModal(false);
+          setTelegramIdentifier('');
+          setExpiryDays('30');
+          await loadData();
+        } catch (err: any) {
+          if (err?.message?.includes('already')) {
             alert(t('invitationAlreadyExists'));
           } else {
-            const error = await pendingResponse.text();
-            alert(`${t('failedToCreateInvitation')}: ${error}`);
+            alert(`${t('failedToCreateInvitation')}: ${err?.message}`);
           }
-          setAdding(false);
-          return;
         }
+        return;
+      }
 
-        alert(t('invitationCreated'));
+      try {
+        await apiClient.enrollStudentByUserId(courseId, studentData.id, expiresAt);
+        alert(t('studentAddedSuccessfully'));
         setShowAddModal(false);
         setTelegramIdentifier('');
         setExpiryDays('30');
         await loadData();
-        return;
-      }
-
-      const enrollResponse = await fetch(`${supabaseUrl}/rest/v1/course_enrollments`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'apikey': supabaseKey,
-          'Authorization': `Bearer ${token}`,
-          'Prefer': 'return=minimal'
-        },
-        body: JSON.stringify({
-          course_id: courseId,
-          student_id: studentData.id,
-          granted_by: user.id,
-          expires_at: expiresAt,
-        })
-      });
-
-      if (!enrollResponse.ok) {
-        console.error('Error enrolling student');
-        if (enrollResponse.status === 409) {
+      } catch (err: any) {
+        if (err?.message?.includes('already')) {
           alert(t('studentAlreadyEnrolled'));
         } else {
-          const error = await enrollResponse.text();
-          alert(`${t('failedToEnrollStudent')}: ${error}`);
+          alert(`${t('failedToEnrollStudent')}: ${err?.message}`);
         }
-        setAdding(false);
-        return;
       }
-
-      alert(t('studentAddedSuccessfully'));
-      setShowAddModal(false);
-      setTelegramIdentifier('');
-      setExpiryDays('30');
-      await loadData();
     } catch (error: any) {
       console.error('Error adding student:', error);
       alert(`${t('failedToAddStudent')}: ${error?.message || t('unknownError')}`);
@@ -262,22 +169,8 @@ export default function StudentsManager() {
     try {
       const token = localStorage.getItem('auth_token');
       if (!token) throw new Error('No auth token');
-
-      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-      const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
-
-      const response = await fetch(
-        `${supabaseUrl}/rest/v1/course_enrollments?id=eq.${enrollmentId}`,
-        {
-          method: 'DELETE',
-          headers: {
-            'apikey': supabaseKey,
-            'Authorization': `Bearer ${token}`
-          }
-        }
-      );
-
-      if (!response.ok) throw new Error('Failed to remove student');
+      apiClient.setToken(token);
+      await apiClient.removeEnrollmentById(enrollmentId);
       setEnrollments(enrollments.filter(e => e.id !== enrollmentId));
     } catch (error) {
       console.error('Error removing student:', error);
@@ -289,22 +182,8 @@ export default function StudentsManager() {
     try {
       const token = localStorage.getItem('auth_token');
       if (!token) throw new Error('No auth token');
-
-      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-      const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
-
-      const response = await fetch(
-        `${supabaseUrl}/rest/v1/pending_enrollments?id=eq.${pendingId}`,
-        {
-          method: 'DELETE',
-          headers: {
-            'apikey': supabaseKey,
-            'Authorization': `Bearer ${token}`
-          }
-        }
-      );
-
-      if (!response.ok) throw new Error('Failed to remove invitation');
+      apiClient.setToken(token);
+      await apiClient.deletePendingEnrollment(courseId!, pendingId);
       setPendingEnrollments(pendingEnrollments.filter(p => p.id !== pendingId));
     } catch (error) {
       console.error('Error removing pending invitation:', error);

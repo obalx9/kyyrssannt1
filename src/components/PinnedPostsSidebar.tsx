@@ -2,6 +2,7 @@ import { useEffect, useState, useCallback } from 'react';
 import { Pin } from 'lucide-react';
 import { useLanguage } from '../contexts/LanguageContext';
 import { useTheme } from '../contexts/ThemeContext';
+import { apiClient } from '../lib/api';
 import { ThemeConfig } from '../utils/themePresets';
 import { getBackgroundStyleProperty, getGlassEffect, getGlassEffectDark } from '../utils/postStyles';
 
@@ -24,7 +25,7 @@ export default function PinnedPostsSidebar({ courseId, onPostClick, themeConfig 
   const [loading, setLoading] = useState(true);
   const [userId, setUserId] = useState<string | null>(null);
 
-  const loadPinnedPosts = useCallback(async (uid: string) => {
+  const loadPinnedPosts = useCallback(async (_uid: string) => {
     try {
       const token = localStorage.getItem('auth_token');
       if (!token) {
@@ -32,45 +33,16 @@ export default function PinnedPostsSidebar({ courseId, onPostClick, themeConfig 
         setLoading(false);
         return;
       }
+      apiClient.setToken(token);
 
-      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-      const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+      const data = await apiClient.getPinnedPosts(courseId);
 
-      const pinnedResponse = await fetch(
-        `${supabaseUrl}/rest/v1/student_pinned_posts?student_id=eq.${uid}&course_id=eq.${courseId}&select=post_id`,
-        {
-          headers: {
-            'apikey': supabaseKey,
-            'Authorization': `Bearer ${token}`
-          }
-        }
-      );
-
-      if (!pinnedResponse.ok) throw new Error('Failed to fetch pinned posts');
-
-      const pinnedData = await pinnedResponse.json();
-
-      if (!pinnedData || pinnedData.length === 0) {
-        setPinnedPosts([]);
-        return;
-      }
-
-      const postIds = pinnedData.map((p: any) => p.post_id);
-
-      const postsResponse = await fetch(
-        `${supabaseUrl}/rest/v1/course_posts?id=in.(${postIds.join(',')})&select=id,text_content,created_at&order=created_at.desc`,
-        {
-          headers: {
-            'apikey': supabaseKey,
-            'Authorization': `Bearer ${token}`
-          }
-        }
-      );
-
-      if (!postsResponse.ok) throw new Error('Failed to fetch posts');
-
-      const posts = await postsResponse.json();
-      setPinnedPosts(posts || []);
+      const posts = (data || []).map((p: any) => ({
+        id: p.post_id,
+        text_content: p.text_content,
+        created_at: p.post_created_at || p.created_at,
+      }));
+      setPinnedPosts(posts);
     } catch (error) {
       console.error('[PinnedPostsSidebar] Error:', error);
       setPinnedPosts([]);
@@ -85,24 +57,10 @@ export default function PinnedPostsSidebar({ courseId, onPostClick, themeConfig 
       if (!token) return;
 
       try {
-        const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-        const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
-
-        const userResponse = await fetch(`${supabaseUrl}/rest/v1/rpc/get_current_user`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'apikey': supabaseKey,
-            'Authorization': `Bearer ${token}`
-          }
-        });
-
-        if (!userResponse.ok) return;
-
-        const userData = await userResponse.json();
+        apiClient.setToken(token);
+        const userData = await apiClient.getUser();
         const uid = userData?.id;
         if (!uid) return;
-
         setUserId(uid);
         loadPinnedPosts(uid);
       } catch (error) {

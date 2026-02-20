@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { Play } from 'lucide-react';
+import { apiClient } from '../lib/api';
 
 export interface MediaItem {
   id: string;
@@ -38,34 +39,19 @@ export default function MediaGallery({ items, courseId, onMediaClick, courseWate
           let url: string;
 
           if (item.storage_path) {
-            const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-            url = `${supabaseUrl}/storage/v1/object/public/course-media/${item.storage_path}`;
+            url = apiClient.getMediaUrl(item.storage_path);
           } else if (item.telegram_file_id) {
-            const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-            const fileId = (item.media_type === 'video' || item.media_type === 'animation') && item.telegram_thumbnail_file_id
-              ? item.telegram_thumbnail_file_id
-              : item.telegram_file_id;
-
             const token = localStorage.getItem('auth_token');
             if (!token) {
               throw new Error('No auth token');
             }
+            apiClient.setToken(token);
 
-            const response = await fetch(
-              `${supabaseUrl}/functions/v1/telegram-media?file_id=${encodeURIComponent(fileId)}&course_id=${encodeURIComponent(courseId)}`,
-              {
-                headers: {
-                  'Authorization': `Bearer ${token}`,
-                },
-              }
-            );
+            const fileId = (item.media_type === 'video' || item.media_type === 'animation') && item.telegram_thumbnail_file_id
+              ? item.telegram_thumbnail_file_id
+              : item.telegram_file_id;
 
-            if (!response.ok) {
-              throw new Error(`Failed to fetch: ${response.status}`);
-            }
-
-            const blob = await response.blob();
-            url = URL.createObjectURL(blob);
+            url = await apiClient.getTelegramFileUrl(fileId, courseId);
             blobUrlsRef.current.add(url);
           } else {
             continue;

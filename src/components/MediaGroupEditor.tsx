@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { Trash2, Upload, GripVertical, X, Save, Video } from 'lucide-react';
 import FileUpload from './FileUpload';
 import type { MediaItem } from './MediaGallery';
+import { apiClient } from '../lib/api';
 
 interface MediaGroupEditorProps {
   postId: string;
@@ -43,41 +44,22 @@ export default function MediaGroupEditor({
         console.error('[MediaGroupEditor] No auth token for migration');
         return;
       }
+      apiClient.setToken(token);
 
       const migratedItems: any[] = [];
-      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-      const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
       for (const item of legacyItems) {
         console.log('[MediaGroupEditor] Migrating item:', item);
 
-        const response = await fetch(`${supabaseUrl}/rest/v1/course_post_media`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'apikey': supabaseKey,
-            'Authorization': `Bearer ${token}`,
-            'Prefer': 'return=representation'
-          },
-          body: JSON.stringify({
-            post_id: postId,
-            media_type: item.media_type,
-            storage_path: item.storage_path,
-            telegram_file_id: item.telegram_file_id,
-            telegram_thumbnail: item.telegram_thumbnail,
-            file_name: item.file_name,
-            file_size: item.file_size,
-            order_index: item.order_index
-          })
+        const newMedia = await apiClient.addPostMedia(postId, {
+          media_type: item.media_type,
+          storage_path: item.storage_path || null,
+          telegram_file_id: item.telegram_file_id || null,
+          file_name: item.file_name || null,
+          file_size: (item as any).file_size || null,
+          order_index: item.order_index,
         });
 
-        if (!response.ok) {
-          const error = await response.text();
-          console.error('[MediaGroupEditor] Migration error:', error);
-          throw new Error(error);
-        }
-
-        const [newMedia] = await response.json();
         console.log('[MediaGroupEditor] Migrated successfully:', newMedia);
         migratedItems.push({ old: item.id, new: newMedia });
       }
@@ -87,26 +69,12 @@ export default function MediaGroupEditor({
         return migrated ? migrated.new : m;
       }));
 
-      const updateResponse = await fetch(`${supabaseUrl}/rest/v1/course_posts?id=eq.${postId}`, {
-        method: 'PATCH',
-        headers: {
-          'Content-Type': 'application/json',
-          'apikey': supabaseKey,
-          'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify({
-          storage_path: null,
-          telegram_file_id: null,
-          telegram_thumbnail: null,
-          file_name: null,
-          file_size: null,
-          media_count: legacyItems.length
-        })
+      await apiClient.updatePost(postId, {
+        storage_path: null,
+        file_name: null,
+        file_size: null,
+        media_count: legacyItems.length,
       });
-
-      if (!updateResponse.ok) {
-        console.error('[MediaGroupEditor] Error updating course_posts');
-      }
 
       setMigrated(true);
       console.log('[MediaGroupEditor] Migration completed');
@@ -138,63 +106,21 @@ export default function MediaGroupEditor({
         mediaType = 'animation';
       }
 
-      console.log('[MediaGroupEditor] Inserting media:', {
-        post_id: postId,
+      apiClient.setToken(token);
+
+      const newMedia = await apiClient.addPostMedia(postId, {
         media_type: mediaType,
         storage_path: storagePath,
         file_name: fileName,
         file_size: fileSize,
-        order_index: mediaItems.length
+        order_index: mediaItems.length,
       });
 
-      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-      const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
-
-      const response = await fetch(`${supabaseUrl}/rest/v1/course_post_media`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'apikey': supabaseKey,
-          'Authorization': `Bearer ${token}`,
-          'Prefer': 'return=representation'
-        },
-        body: JSON.stringify({
-          post_id: postId,
-          media_type: mediaType,
-          storage_path: storagePath,
-          file_name: fileName,
-          file_size: fileSize,
-          order_index: mediaItems.length
-        })
-      });
-
-      if (!response.ok) {
-        const error = await response.text();
-        console.error('[MediaGroupEditor] Insert error:', error);
-        throw new Error(error);
-      }
-
-      const [newMedia] = await response.json();
       console.log('[MediaGroupEditor] Media added successfully:', newMedia);
       setMediaItems([...mediaItems, newMedia]);
       await updatePostMediaCount(mediaItems.length + 1);
 
-      const clearResponse = await fetch(`${supabaseUrl}/rest/v1/course_posts?id=eq.${postId}`, {
-        method: 'PATCH',
-        headers: {
-          'Content-Type': 'application/json',
-          'apikey': supabaseKey,
-          'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify({
-          has_error: false,
-          error_message: null
-        })
-      });
-
-      if (!clearResponse.ok) {
-        console.error('[MediaGroupEditor] Error clearing error flag');
-      }
+      await apiClient.updatePost(postId, { has_error: false, error_message: null });
     } catch (error) {
       console.error('[MediaGroupEditor] Error adding media:', error);
       alert('Failed to add media. Please try again.');
@@ -208,37 +134,18 @@ export default function MediaGroupEditor({
       console.log('[MediaGroupEditor] Deleting media:', mediaId);
 
       const token = localStorage.getItem('auth_token');
-      if (!token) {
-        throw new Error('No auth token');
-      }
-
-      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-      const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+      if (!token) throw new Error('No auth token');
+      apiClient.setToken(token);
 
       if (mediaId.startsWith('legacy-')) {
         console.log('[MediaGroupEditor] Deleting legacy media from course_posts');
-        const response = await fetch(`${supabaseUrl}/rest/v1/course_posts?id=eq.${postId}`, {
-          method: 'PATCH',
-          headers: {
-            'Content-Type': 'application/json',
-            'apikey': supabaseKey,
-            'Authorization': `Bearer ${token}`
-          },
-          body: JSON.stringify({
-            storage_path: null,
-            telegram_file_id: null,
-            telegram_thumbnail: null,
-            file_name: null,
-            file_size: null,
-            media_type: null,
-            media_count: 0
-          })
+        await apiClient.updatePost(postId, {
+          storage_path: null,
+          file_name: null,
+          file_size: null,
+          media_type: null,
+          media_count: 0,
         });
-
-        if (!response.ok) {
-          console.error('[MediaGroupEditor] Error deleting legacy media');
-          throw new Error('Failed to delete legacy media');
-        }
 
         const updatedItems = mediaItems.filter(item => item.id !== mediaId);
         setMediaItems(updatedItems);
@@ -247,19 +154,7 @@ export default function MediaGroupEditor({
       }
 
       console.log('[MediaGroupEditor] Deleting media from course_post_media');
-      const response = await fetch(`${supabaseUrl}/rest/v1/course_post_media?id=eq.${mediaId}`, {
-        method: 'DELETE',
-        headers: {
-          'Content-Type': 'application/json',
-          'apikey': supabaseKey,
-          'Authorization': `Bearer ${token}`
-        }
-      });
-
-      if (!response.ok) {
-        console.error('[MediaGroupEditor] Error deleting media');
-        throw new Error('Failed to delete media');
-      }
+      await apiClient.deletePostMedia(postId, mediaId);
 
       const updatedItems = mediaItems.filter(item => item.id !== mediaId);
       setMediaItems(updatedItems);
@@ -303,30 +198,11 @@ export default function MediaGroupEditor({
     try {
       console.log('[MediaGroupEditor] Reordering media items');
       const token = localStorage.getItem('auth_token');
-      if (!token) {
-        throw new Error('No auth token');
-      }
-
-      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-      const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+      if (!token) throw new Error('No auth token');
+      apiClient.setToken(token);
 
       await Promise.all(
-        items.map(async (item, index) => {
-          const response = await fetch(`${supabaseUrl}/rest/v1/course_post_media?id=eq.${item.id}`, {
-            method: 'PATCH',
-            headers: {
-              'Content-Type': 'application/json',
-              'apikey': supabaseKey,
-              'Authorization': `Bearer ${token}`
-            },
-            body: JSON.stringify({ order_index: index })
-          });
-
-          if (!response.ok) {
-            console.error(`[MediaGroupEditor] Error reordering item ${item.id}`);
-            throw new Error('Failed to reorder item');
-          }
-        })
+        items.map((item, index) => apiClient.updatePostMedia(postId, item.id, { order_index: index }))
       );
 
       console.log('[MediaGroupEditor] Media items reordered successfully');
@@ -339,22 +215,9 @@ export default function MediaGroupEditor({
   const updatePostMediaCount = async (count: number) => {
     try {
       const token = localStorage.getItem('auth_token');
-      if (!token) {
-        throw new Error('No auth token');
-      }
-
-      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-      const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
-
-      await fetch(`${supabaseUrl}/rest/v1/course_posts?id=eq.${postId}`, {
-        method: 'PATCH',
-        headers: {
-          'Content-Type': 'application/json',
-          'apikey': supabaseKey,
-          'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify({ media_count: count })
-      });
+      if (!token) throw new Error('No auth token');
+      apiClient.setToken(token);
+      await apiClient.updatePost(postId, { media_count: count });
     } catch (error) {
       console.error('Error updating media count:', error);
     }
@@ -364,29 +227,16 @@ export default function MediaGroupEditor({
     setSaving(true);
     try {
       const token = localStorage.getItem('auth_token');
-      if (!token) {
-        throw new Error('No auth token');
-      }
+      if (!token) throw new Error('No auth token');
+      apiClient.setToken(token);
 
-      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-      const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
-
-      const response = await fetch(`${supabaseUrl}/rest/v1/course_posts?id=eq.${postId}`, {
-        method: 'PATCH',
-        headers: {
-          'Content-Type': 'application/json',
-          'apikey': supabaseKey,
-          'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify({
-          title: title,
-          text_content: textContent,
-          has_error: false,
-          error_message: null
-        })
+      await apiClient.updatePost(postId, {
+        title,
+        text_content: textContent,
+        has_error: false,
+        error_message: null,
       });
 
-      if (!response.ok) throw new Error('Failed to save post');
       onUpdate();
     } catch (error) {
       console.error('Error saving post:', error);
@@ -407,30 +257,12 @@ export default function MediaGroupEditor({
           let url: string;
 
           if (item.storage_path) {
-            const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-            url = `${supabaseUrl}/storage/v1/object/public/course-media/${item.storage_path}`;
+            url = apiClient.getMediaUrl(item.storage_path);
           } else if (item.telegram_file_id) {
-            const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
             const token = localStorage.getItem('auth_token');
-            if (!token) {
-              throw new Error('No auth token');
-            }
-
-            const response = await fetch(
-              `${supabaseUrl}/functions/v1/telegram-media?file_id=${encodeURIComponent(item.telegram_file_id)}&course_id=${encodeURIComponent(courseId)}`,
-              {
-                headers: {
-                  'Authorization': `Bearer ${token}`,
-                },
-              }
-            );
-
-            if (!response.ok) {
-              throw new Error(`Failed to fetch: ${response.status}`);
-            }
-
-            const blob = await response.blob();
-            url = URL.createObjectURL(blob);
+            if (!token) throw new Error('No auth token');
+            apiClient.setToken(token);
+            url = await apiClient.getTelegramFileUrl(item.telegram_file_id, courseId);
             blobUrlsRef.current.add(url);
           } else {
             continue;
