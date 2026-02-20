@@ -8,6 +8,7 @@ import LanguageSelector from '../components/LanguageSelector';
 import ThemeToggle from '../components/ThemeToggle';
 import TelegramBotConfig from '../components/TelegramBotConfig';
 import ConfirmDialog from '../components/ConfirmDialog';
+import { apiClient } from '../lib/api';
 
 interface Course {
   id: string;
@@ -67,33 +68,13 @@ export default function SellerDashboard() {
 
   const loadData = async () => {
     try {
-      const { data: sellerData, error: sellerError } = await supabase
-        .from('sellers')
-        .select('id, business_name, is_approved')
-        .eq('user_id', user!.id)
-        .maybeSingle();
+      const [sellerData, coursesData] = await Promise.all([
+        apiClient.getSellerProfile().catch(() => null),
+        apiClient.getSellerCourses().catch(() => []),
+      ]);
 
-      if (sellerError) throw sellerError;
       setSeller(sellerData);
-
-      if (sellerData) {
-        const { data: coursesData, error: coursesError } = await supabase
-          .from('courses')
-          .select(`
-            id,
-            title,
-            description,
-            is_published,
-            created_at,
-            thumbnail_url,
-            enrollments:course_enrollments(count)
-          `)
-          .eq('seller_id', sellerData.id)
-          .order('created_at', { ascending: false });
-
-        if (coursesError) throw coursesError;
-        setCourses(coursesData || []);
-      }
+      setCourses(coursesData || []);
     } catch (error) {
       console.error('Error loading data:', error);
     } finally {
@@ -115,18 +96,12 @@ export default function SellerDashboard() {
 
     setCreating(true);
     try {
-      const { data, error } = await supabase
-        .from('courses')
-        .insert({
-          seller_id: seller.id,
-          title: newCourseTitle,
-          description: newCourseDescription,
-          is_published: false,
-        })
-        .select()
-        .single();
-
-      if (error) throw error;
+      const data = await apiClient.createCourse({
+        title: newCourseTitle,
+        description: newCourseDescription,
+        price: 0,
+        is_published: false,
+      });
 
       setCourses([data, ...courses]);
       setShowCreateModal(false);
@@ -143,12 +118,7 @@ export default function SellerDashboard() {
 
   const handleDeleteCourse = async (courseId: string) => {
     try {
-      const { error } = await supabase
-        .from('courses')
-        .delete()
-        .eq('id', courseId);
-
-      if (error) throw error;
+      await apiClient.deleteCourse(courseId);
       setCourses(courses.filter(c => c.id !== courseId));
     } catch (error) {
       console.error('Error deleting course:', error);

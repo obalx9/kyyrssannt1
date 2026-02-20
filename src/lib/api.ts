@@ -213,6 +213,26 @@ export class ApiClient {
       body: JSON.stringify(data),
     });
   }
+
+  async getAdminStats() {
+    return this.request('/api/admin/stats');
+  }
+
+  async getPendingSellers() {
+    return this.request('/api/admin/sellers/pending');
+  }
+
+  async approveSeller(sellerId: string) {
+    return this.request(`/api/admin/sellers/${sellerId}/approve`, {
+      method: 'PATCH',
+    });
+  }
+
+  async rejectSeller(sellerId: string) {
+    return this.request(`/api/admin/sellers/${sellerId}`, {
+      method: 'DELETE',
+    });
+  }
 }
 
 export const apiClient = new ApiClient();

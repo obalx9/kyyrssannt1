@@ -1052,6 +1052,144 @@ app.delete('/api/posts/:id', authenticateToken, async (req, res) => {
   }
 });
 
+app.get('/api/admin/stats', authenticateToken, async (req, res) => {
+  try {
+    const roleCheck = await pool.query(
+      'SELECT role FROM user_roles WHERE user_id = $1 AND role = $2',
+      [req.user.userId, 'super_admin']
+    );
+    if (roleCheck.rows.length === 0) {
+      return res.status(403).json({ error: 'Access denied' });
+    }
+
+    const [usersResult, sellersResult, coursesResult, pendingResult] = await Promise.all([
+      pool.query('SELECT COUNT(*) as count FROM users'),
+      pool.query('SELECT COUNT(*) as count FROM sellers WHERE is_approved = true'),
+      pool.query('SELECT COUNT(*) as count FROM courses'),
+      pool.query('SELECT COUNT(*) as count FROM sellers WHERE is_approved = false'),
+    ]);
+
+    res.json({
+      totalUsers: parseInt(usersResult.rows[0].count),
+      totalSellers: parseInt(sellersResult.rows[0].count),
+      totalCourses: parseInt(coursesResult.rows[0].count),
+      pendingSellers: parseInt(pendingResult.rows[0].count),
+    });
+  } catch (error) {
+    console.error('Error fetching admin stats:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+app.get('/api/admin/sellers/pending', authenticateToken, async (req, res) => {
+  try {
+    const roleCheck = await pool.query(
+      'SELECT role FROM user_roles WHERE user_id = $1 AND role = $2',
+      [req.user.userId, 'super_admin']
+    );
+    if (roleCheck.rows.length === 0) {
+      return res.status(403).json({ error: 'Access denied' });
+    }
+
+    const result = await pool.query(
+      `SELECT s.id, s.business_name, s.description, s.is_approved,
+              u.first_name, u.last_name, u.telegram_username
+       FROM sellers s
+       JOIN users u ON s.user_id = u.id
+       WHERE s.is_approved = false
+       ORDER BY s.created_at ASC`
+    );
+
+    const sellers = result.rows.map(row => ({
+      id: row.id,
+      business_name: row.business_name,
+      description: row.description,
+      is_approved: row.is_approved,
+      user: {
+        first_name: row.first_name,
+        last_name: row.last_name,
+        telegram_username: row.telegram_username,
+      },
+    }));
+
+    res.json(sellers);
+  } catch (error) {
+    console.error('Error fetching pending sellers:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+app.patch('/api/admin/sellers/:id/approve', authenticateToken, async (req, res) => {
+  try {
+    const roleCheck = await pool.query(
+      'SELECT role FROM user_roles WHERE user_id = $1 AND role = $2',
+      [req.user.userId, 'super_admin']
+    );
+    if (roleCheck.rows.length === 0) {
+      return res.status(403).json({ error: 'Access denied' });
+    }
+
+    const result = await pool.query(
+      'UPDATE sellers SET is_approved = true WHERE id = $1 RETURNING id',
+      [req.params.id]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Seller not found' });
+    }
+
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Error approving seller:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+app.delete('/api/admin/sellers/:id', authenticateToken, async (req, res) => {
+  try {
+    const roleCheck = await pool.query(
+      'SELECT role FROM user_roles WHERE user_id = $1 AND role = $2',
+      [req.user.userId, 'super_admin']
+    );
+    if (roleCheck.rows.length === 0) {
+      return res.status(403).json({ error: 'Access denied' });
+    }
+
+    const sellerResult = await pool.query(
+      'SELECT user_id FROM sellers WHERE id = $1',
+      [req.params.id]
+    );
+
+    if (sellerResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Seller not found' });
+    }
+
+    const sellerId = req.params.id;
+    const userId = sellerResult.rows[0].user_id;
+
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+      await client.query('DELETE FROM sellers WHERE id = $1', [sellerId]);
+      await client.query(
+        "DELETE FROM user_roles WHERE user_id = $1 AND role = 'seller'",
+        [userId]
+      );
+      await client.query('COMMIT');
+    } catch (err) {
+      await client.query('ROLLBACK');
+      throw err;
+    } finally {
+      client.release();
+    }
+
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Error rejecting seller:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 app.get('/api/sellers/me', authenticateToken, async (req, res) => {
   try {
     const result = await pool.query(

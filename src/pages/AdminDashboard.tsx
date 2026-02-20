@@ -5,6 +5,7 @@ import { useLanguage } from '../contexts/LanguageContext';
 import { Shield, Users, Store, BookOpen, LogOut, Check, X } from 'lucide-react';
 import LanguageSelector from '../components/LanguageSelector';
 import ThemeToggle from '../components/ThemeToggle';
+import { apiClient } from '../lib/api';
 
 interface PendingSeller {
   id: string;
@@ -51,72 +52,12 @@ export default function AdminDashboard() {
 
   const loadData = async () => {
     try {
-      const token = localStorage.getItem('auth_token');
-      if (!token) {
-        setLoadingData(false);
-        return;
-      }
-
-      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-      const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
-
-      const [usersRes, sellersRes, coursesRes, pendingRes] = await Promise.all([
-        fetch(`${supabaseUrl}/rest/v1/users?select=id&limit=1`, {
-          method: 'HEAD',
-          headers: {
-            'apikey': supabaseKey,
-            'Authorization': `Bearer ${token}`,
-            'Prefer': 'count=exact'
-          }
-        }),
-        fetch(`${supabaseUrl}/rest/v1/sellers?select=id&limit=1`, {
-          method: 'HEAD',
-          headers: {
-            'apikey': supabaseKey,
-            'Authorization': `Bearer ${token}`,
-            'Prefer': 'count=exact'
-          }
-        }),
-        fetch(`${supabaseUrl}/rest/v1/courses?select=id&limit=1`, {
-          method: 'HEAD',
-          headers: {
-            'apikey': supabaseKey,
-            'Authorization': `Bearer ${token}`,
-            'Prefer': 'count=exact'
-          }
-        }),
-        fetch(`${supabaseUrl}/rest/v1/sellers?is_approved=eq.false&select=id,business_name,description,is_approved,user:users!sellers_user_id_fkey(first_name,last_name,telegram_username)`, {
-          headers: {
-            'apikey': supabaseKey,
-            'Authorization': `Bearer ${token}`
-          }
-        })
+      const [statsData, pendingData] = await Promise.all([
+        apiClient.getAdminStats(),
+        apiClient.getPendingSellers(),
       ]);
 
-      const getUsersCount = () => {
-        const count = usersRes.headers.get('Content-Range');
-        return count ? parseInt(count.split('/')[1]) : 0;
-      };
-
-      const getSellersCount = () => {
-        const count = sellersRes.headers.get('Content-Range');
-        return count ? parseInt(count.split('/')[1]) : 0;
-      };
-
-      const getCoursesCount = () => {
-        const count = coursesRes.headers.get('Content-Range');
-        return count ? parseInt(count.split('/')[1]) : 0;
-      };
-
-      const pendingData = await pendingRes.json();
-
-      setStats({
-        totalUsers: getUsersCount(),
-        totalSellers: getSellersCount(),
-        totalCourses: getCoursesCount(),
-        pendingSellers: pendingData?.length || 0,
-      });
-
+      setStats(statsData);
       setPendingSellers(pendingData || []);
     } catch (error) {
       console.error('Error loading data:', error);
@@ -127,28 +68,12 @@ export default function AdminDashboard() {
 
   const handleApproveSeller = async (sellerId: string) => {
     try {
-      const token = localStorage.getItem('auth_token');
-      if (!token) throw new Error('No auth token');
-
-      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-      const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
-
-      const response = await fetch(`${supabaseUrl}/rest/v1/sellers?id=eq.${sellerId}`, {
-        method: 'PATCH',
-        headers: {
-          'Content-Type': 'application/json',
-          'apikey': supabaseKey,
-          'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify({ is_approved: true })
-      });
-
-      if (!response.ok) throw new Error('Failed to approve seller');
-
+      await apiClient.approveSeller(sellerId);
       setPendingSellers(pendingSellers.filter(s => s.id !== sellerId));
       setStats(prev => ({
         ...prev,
         pendingSellers: prev.pendingSellers - 1,
+        totalSellers: prev.totalSellers + 1,
       }));
     } catch (error) {
       console.error('Error approving seller:', error);
@@ -160,22 +85,7 @@ export default function AdminDashboard() {
     if (!confirm(t('rejectSellerConfirm'))) return;
 
     try {
-      const token = localStorage.getItem('auth_token');
-      if (!token) throw new Error('No auth token');
-
-      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-      const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
-
-      const response = await fetch(`${supabaseUrl}/rest/v1/sellers?id=eq.${sellerId}`, {
-        method: 'DELETE',
-        headers: {
-          'apikey': supabaseKey,
-          'Authorization': `Bearer ${token}`
-        }
-      });
-
-      if (!response.ok) throw new Error('Failed to reject seller');
-
+      await apiClient.rejectSeller(sellerId);
       setPendingSellers(pendingSellers.filter(s => s.id !== sellerId));
       setStats(prev => ({
         ...prev,
