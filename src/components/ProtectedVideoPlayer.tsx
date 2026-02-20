@@ -48,44 +48,49 @@ export default function ProtectedVideoPlayer({
       return;
     }
 
-    const loadMediaAsBlob = async () => {
+    const setupMediaUrl = async () => {
       try {
-        setLoading(true);
         setError(null);
 
         const token = localStorage.getItem('token');
-        const urlWithToken = token && rawUrl.includes('/api/')
-          ? `${rawUrl}${rawUrl.includes('?') ? '&' : '?'}token=${encodeURIComponent(token)}`
-          : rawUrl;
 
-        const response = await fetch(rawUrl, {
-          headers: token ? { 'Authorization': `Bearer ${token}` } : {}
-        });
+        if (mediaType === 'video') {
+          setLoading(false);
+          const urlWithToken = token && rawUrl.includes('/api/')
+            ? `${rawUrl}${rawUrl.includes('?') ? '&' : '?'}token=${encodeURIComponent(token)}`
+            : rawUrl;
+          setBlobUrl(urlWithToken);
+        } else {
+          setLoading(true);
+          const response = await fetch(rawUrl, {
+            headers: token ? { 'Authorization': `Bearer ${token}` } : {}
+          });
 
-        if (!response.ok) {
-          throw new Error(`Failed to load media: ${response.status}`);
+          if (!response.ok) {
+            throw new Error(`Failed to load media: ${response.status}`);
+          }
+
+          const blob = await response.blob();
+          const url = URL.createObjectURL(blob);
+          setBlobUrl(url);
+          setLoading(false);
         }
-
-        const blob = await response.blob();
-        const url = URL.createObjectURL(blob);
-        setBlobUrl(url);
       } catch (err) {
         console.error('Error loading media:', err);
         setError(err instanceof Error ? err.message : 'Failed to load media');
         setBlobUrl(null);
-      } finally {
         setLoading(false);
       }
     };
 
-    loadMediaAsBlob();
+    setupMediaUrl();
 
     return () => {
-      if (blobUrl) {
+      if (blobUrl && blobUrl.startsWith('blob:')) {
         URL.revokeObjectURL(blobUrl);
       }
     };
-  }, [rawUrl]);
+  }, [rawUrl, mediaType]);
 
   const url = blobUrl || rawUrl;
 

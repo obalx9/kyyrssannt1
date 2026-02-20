@@ -2825,19 +2825,14 @@ app.get('/api/telegram/file/:fileId', authenticateToken, async (req, res) => {
 
     const botResult = await pool.query(
       `SELECT tb.bot_token FROM telegram_bots tb
-       WHERE tb.course_id = $1 AND tb.is_active = true
+       WHERE tb.is_active = true
+       ORDER BY (tb.course_id = $1) DESC, tb.created_at DESC
        LIMIT 1`,
-      [course_id]
+      [course_id || null]
     );
 
     if (botResult.rows.length === 0) {
-      const fallbackResult = await pool.query(
-        'SELECT bot_token FROM telegram_bots WHERE is_active = true ORDER BY created_at DESC LIMIT 1'
-      );
-      if (fallbackResult.rows.length === 0) {
-        return res.status(404).json({ error: 'No bot configured' });
-      }
-      botResult.rows.push(fallbackResult.rows[0]);
+      return res.status(404).json({ error: 'No bot configured' });
     }
 
     const botToken = botResult.rows[0].bot_token;
@@ -2850,18 +2845,24 @@ app.get('/api/telegram/file/:fileId', authenticateToken, async (req, res) => {
     }
 
     const filePath = fileInfo.result.file_path;
-    const fileResponse = await fetch(`https://api.telegram.org/file/bot${botToken}/${filePath}`);
+    const fileUrl = `https://api.telegram.org/file/bot${botToken}/${filePath}`;
+    const fileResponse = await fetch(fileUrl);
 
     if (!fileResponse.ok) {
       return res.status(502).json({ error: 'Failed to fetch file from Telegram' });
     }
 
     const contentType = fileResponse.headers.get('content-type') || 'application/octet-stream';
+    const contentLength = fileResponse.headers.get('content-length');
+
     res.setHeader('Content-Type', contentType);
     res.setHeader('Cache-Control', 'public, max-age=3600');
+    if (contentLength) {
+      res.setHeader('Content-Length', contentLength);
+    }
+    res.setHeader('Accept-Ranges', 'bytes');
 
-    const buffer = await fileResponse.arrayBuffer();
-    res.send(Buffer.from(buffer));
+    fileResponse.body.pipe(res);
   } catch (error) {
     console.error('Error fetching Telegram file:', error);
     res.status(500).json({ error: 'Internal server error' });
