@@ -20,13 +20,18 @@ const uploadsDir = join(__dirname, 'uploads');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-const allowedOrigins = process.env.ALLOWED_ORIGINS?.split(',') || ['http://localhost:5173'];
+const allowedOrigins = process.env.ALLOWED_ORIGINS?.split(',').map(o => o.trim()) || ['http://localhost:5173'];
+
+console.log('[INIT] Allowed CORS origins:', allowedOrigins);
 
 app.use(cors({
   origin: (origin, callback) => {
+    console.log('[CORS] Request origin:', origin);
     if (!origin || allowedOrigins.includes(origin)) {
+      console.log('[CORS] Origin allowed');
       callback(null, true);
     } else {
+      console.warn('[CORS] Origin NOT allowed:', origin);
       callback(new Error('Not allowed by CORS'));
     }
   },
@@ -47,13 +52,22 @@ const storage = multer.diskStorage({
       ? join(uploadsDir, courseId, lessonId)
       : join(uploadsDir, courseId);
 
+    console.log('[MULTER] Creating directory:', destPath);
+
     mkdir(destPath, { recursive: true })
-      .then(() => cb(null, destPath))
-      .catch(err => cb(err, null));
+      .then(() => {
+        console.log('[MULTER] Directory created successfully:', destPath);
+        cb(null, destPath);
+      })
+      .catch(err => {
+        console.error('[MULTER] Directory creation failed:', err.message);
+        cb(err, null);
+      });
   },
   filename: (req, file, cb) => {
     const ext = file.originalname.split('.').pop();
     const filename = `${Date.now()}_${Math.random().toString(36).substring(7)}.${ext}`;
+    console.log('[MULTER] Filename generated:', filename);
     cb(null, filename);
   }
 });
@@ -61,6 +75,10 @@ const storage = multer.diskStorage({
 const upload = multer({
   storage,
   limits: { fileSize: 100 * 1024 * 1024 }
+});
+
+upload.on('error', (error) => {
+  console.error('[MULTER] Multer error:', error.message);
 });
 
 let sslConfig = false;
@@ -132,14 +150,21 @@ function authenticateToken(req, res, next) {
   const authHeader = req.headers['authorization'];
   const token = authHeader && authHeader.split(' ')[1];
 
+  console.log('[AUTH] Authorization header present:', !!authHeader);
+  console.log('[AUTH] Token extracted:', !!token);
+
   if (!token) {
+    console.warn('[AUTH] No token provided');
     return res.status(401).json({ error: 'Access token required' });
   }
 
   jwt.verify(token, process.env.JWT_SECRET, (err, user) => {
     if (err) {
+      console.error('[AUTH] Token verification failed:', err.message);
+      console.log('[AUTH] JWT_SECRET exists:', !!process.env.JWT_SECRET);
       return res.status(403).json({ error: 'Invalid or expired token' });
     }
+    console.log('[AUTH] Token verified successfully, user:', user);
     req.user = user;
     next();
   });
@@ -1712,14 +1737,25 @@ app.post('/api/telegram-bots', authenticateToken, async (req, res) => {
 
 app.post('/api/upload', authenticateToken, upload.single('file'), async (req, res) => {
   try {
+    console.log('[UPLOAD] Request started');
+    console.log('[UPLOAD] User:', req.user);
+    console.log('[UPLOAD] File received:', !!req.file);
+    console.log('[UPLOAD] Body:', JSON.stringify(req.body, null, 2));
+
     if (!req.file) {
+      console.warn('[UPLOAD] No file in request');
       return res.status(400).json({ error: 'No file uploaded' });
     }
 
     const { courseId, lessonId } = req.body;
+    console.log('[UPLOAD] CourseId:', courseId, 'LessonId:', lessonId);
+    console.log('[UPLOAD] File info - name:', req.file.originalname, 'size:', req.file.size, 'path:', req.file.path);
+
     const relativePath = lessonId
       ? `${courseId}/${lessonId}/${req.file.filename}`
       : `${courseId}/${req.file.filename}`;
+
+    console.log('[UPLOAD] File saved to:', relativePath);
 
     res.json({
       filePath: relativePath,
@@ -1727,8 +1763,11 @@ app.post('/api/upload', authenticateToken, upload.single('file'), async (req, re
       fileName: req.file.originalname
     });
   } catch (error) {
-    console.error('Error uploading file:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    console.error('[UPLOAD] Error occurred:');
+    console.error('[UPLOAD] Error message:', error.message);
+    console.error('[UPLOAD] Error stack:', error.stack);
+    console.error('[UPLOAD] Full error object:', JSON.stringify(error, Object.getOwnPropertyNames(error), 2));
+    res.status(500).json({ error: 'Internal server error', details: error.message });
   }
 });
 
@@ -2803,10 +2842,25 @@ app.use((err, req, res, next) => {
   res.status(500).json({ error: 'Something went wrong!' });
 });
 
+app.use((err, req, res, next) => {
+  console.error('[ERROR] Global error handler:', err.message);
+  console.error('[ERROR] Error stack:', err.stack);
+
+  if (err.message && err.message.includes('CORS')) {
+    console.error('[ERROR] CORS error detected');
+    return res.status(403).json({ error: 'CORS policy violation' });
+  }
+
+  res.status(500).json({ error: 'Internal server error', message: err.message });
+});
+
 app.listen(PORT, '0.0.0.0', () => {
   console.log(`🚀 Server running on port ${PORT}`);
   console.log(`📊 Health check: http://localhost:${PORT}/health`);
   console.log(`🌍 Environment: ${process.env.NODE_ENV || 'development'}`);
+  console.log(`📁 Uploads directory: ${uploadsDir}`);
+  console.log(`🔑 JWT_SECRET configured: ${!!process.env.JWT_SECRET}`);
+  console.log(`✅ CORS allowed origins: ${process.env.ALLOWED_ORIGINS || 'http://localhost:5173'}`);
 });
 
 export default app;
