@@ -599,7 +599,7 @@ app.get('/api/diagnostics', (req, res) => {
 app.get('/api/telegram-bot', async (req, res) => {
   try {
     const result = await pool.query(
-      'SELECT bot_username, bot_token, channel_id FROM telegram_bots ORDER BY created_at DESC LIMIT 1'
+      'SELECT bot_username, bot_token, channel_id FROM telegram_bots WHERE is_active = true ORDER BY created_at DESC LIMIT 1'
     );
 
     if (result.rows.length === 0) {
@@ -616,7 +616,7 @@ app.get('/api/telegram-bot', async (req, res) => {
 app.get('/api/telegram-bot/webhook-info', authenticateToken, async (req, res) => {
   try {
     const result = await pool.query(
-      'SELECT bot_token FROM telegram_bots ORDER BY created_at DESC LIMIT 1'
+      'SELECT bot_token FROM telegram_bots WHERE is_active = true ORDER BY created_at DESC LIMIT 1'
     );
 
     if (result.rows.length === 0) {
@@ -639,7 +639,7 @@ app.post('/api/telegram-auth', async (req, res) => {
     const telegramData = req.body;
 
     const botResult = await pool.query(
-      'SELECT bot_token FROM telegram_bots ORDER BY created_at DESC LIMIT 1'
+      'SELECT bot_token FROM telegram_bots WHERE is_active = true ORDER BY created_at DESC LIMIT 1'
     );
 
     if (botResult.rows.length === 0) {
@@ -1704,12 +1704,12 @@ app.post('/api/telegram/webhook/:secret', async (req, res) => {
     console.log('[Webhook] Received update:', JSON.stringify(update, null, 2));
 
     const botResult = await pool.query(
-      'SELECT * FROM telegram_bots WHERE webhook_secret = $1 AND is_active = true LIMIT 1',
+      'SELECT * FROM telegram_bots WHERE webhook_secret = $1 LIMIT 1',
       [secret]
     );
 
     if (botResult.rows.length === 0) {
-      console.log('[Webhook] Invalid secret or inactive bot');
+      console.log('[Webhook] Invalid secret');
       return res.status(403).json({ error: 'Invalid webhook secret' });
     }
 
@@ -1724,30 +1724,19 @@ app.post('/api/telegram/webhook/:secret', async (req, res) => {
     }
 
     async function showCourseSelector(chatId, promptText) {
-      const coursesResult = await pool.query(
+      const courses = await pool.query(
         `SELECT c.id, c.title FROM courses c
-         JOIN telegram_bots tb ON tb.course_id = c.id
-         WHERE tb.id = $1
+         WHERE c.seller_id = $1
          ORDER BY c.title`,
-        [bot.id]
+        [bot.seller_id]
       );
 
-      const allCourses = await pool.query(
-        `SELECT c.id, c.title FROM courses c
-         JOIN sellers s ON c.seller_id = s.id
-         WHERE s.id = (SELECT created_by FROM telegram_bots WHERE id = $1)
-         ORDER BY c.title`,
-        [bot.id]
-      );
-
-      const courses = allCourses.rows.length > 0 ? allCourses.rows : coursesResult.rows;
-
-      if (courses.length === 0) {
+      if (courses.rows.length === 0) {
         await tgSend('sendMessage', { chat_id: chatId, text: 'У вас нет доступных курсов.' });
         return;
       }
 
-      const buttons = courses.map(c => ([{
+      const buttons = courses.rows.map(c => ([{
         text: c.title,
         callback_data: `import:${c.id}`
       }]));
