@@ -2047,8 +2047,8 @@ app.post('/api/telegram/webhook/:secret', async (req, res) => {
              (course_id, source_type, text_content, media_type, telegram_file_id,
               telegram_thumbnail_file_id, telegram_message_id, file_name, file_size, mime_type,
               telegram_media_width, telegram_media_height, telegram_media_duration,
-              published_at, has_error, error_message)
-             VALUES ($1, 'telegram', $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
+              published_at)
+             VALUES ($1, 'telegram', $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
              RETURNING id`,
             [
               session.course_id,
@@ -2063,9 +2063,7 @@ app.post('/api/telegram/webhook/:secret', async (req, res) => {
               fwdWidth,
               fwdHeight,
               fwdDuration,
-              new Date(message.date * 1000),
-              fwdHasError,
-              fwdErrorMessage
+              new Date(message.date * 1000)
             ]
           );
 
@@ -2222,14 +2220,7 @@ app.post('/api/telegram/webhook/:secret', async (req, res) => {
         }
 
         if (groupHasError) {
-          await client.query(
-            `UPDATE course_posts SET has_error = true, error_message = $1 WHERE id = $2`,
-            [
-              'Telegram может передавать файлы только до 20 МБ. Один или несколько файлов группы превышают лимит. Пожалуйста, загрузите их вручную через форму редактирования ниже.',
-              postId
-            ]
-          );
-          console.log('[Webhook] Media group post has oversized files, marked has_error:', postId);
+          console.log('[Webhook] Media group post has oversized files (some files > 20MB):', postId);
         }
 
         await client.query(
@@ -2309,9 +2300,8 @@ app.post('/api/telegram/webhook/:secret', async (req, res) => {
           `INSERT INTO course_posts
            (course_id, source_type, title, text_content, media_type, telegram_file_id,
             telegram_thumbnail_file_id, telegram_message_id, file_name, file_size, mime_type,
-            telegram_media_width, telegram_media_height, telegram_media_duration, published_at,
-            has_error, error_message)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
+            telegram_media_width, telegram_media_height, telegram_media_duration, published_at)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
            RETURNING id`,
           [
             channelCourseId,
@@ -2328,9 +2318,7 @@ app.post('/api/telegram/webhook/:secret', async (req, res) => {
             width,
             height,
             duration,
-            new Date(message.date * 1000),
-            singleHasError,
-            singleErrorMessage
+            new Date(message.date * 1000)
           ]
         );
 
