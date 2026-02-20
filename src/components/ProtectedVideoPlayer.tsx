@@ -38,8 +38,52 @@ export default function ProtectedVideoPlayer({
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [rewindAnimation, setRewindAnimation] = useState(false);
   const [forwardAnimation, setForwardAnimation] = useState(false);
+  const [blobUrl, setBlobUrl] = useState<string | null>(null);
 
-  const url = mediaUrl || videoUrl || '';
+  const rawUrl = mediaUrl || videoUrl || '';
+
+  useEffect(() => {
+    if (!rawUrl) {
+      setLoading(false);
+      return;
+    }
+
+    const loadMediaAsBlob = async () => {
+      try {
+        setLoading(true);
+        setError(null);
+
+        const token = localStorage.getItem('token');
+        const response = await fetch(rawUrl, {
+          headers: token ? { 'Authorization': `Bearer ${token}` } : {}
+        });
+
+        if (!response.ok) {
+          throw new Error(`Failed to load media: ${response.status}`);
+        }
+
+        const blob = await response.blob();
+        const url = URL.createObjectURL(blob);
+        setBlobUrl(url);
+      } catch (err) {
+        console.error('Error loading media:', err);
+        setError(err instanceof Error ? err.message : 'Failed to load media');
+        setBlobUrl(null);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    loadMediaAsBlob();
+
+    return () => {
+      if (blobUrl) {
+        URL.revokeObjectURL(blobUrl);
+      }
+    };
+  }, [rawUrl]);
+
+  const url = blobUrl || rawUrl;
 
   const skipBackward = () => {
     const video = videoRef.current;
