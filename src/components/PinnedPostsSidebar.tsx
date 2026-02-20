@@ -27,7 +27,7 @@ export default function PinnedPostsSidebar({ courseId, onPostClick, themeConfig 
 
   const loadPinnedPosts = useCallback(async (_uid: string) => {
     try {
-      const token = localStorage.getItem('auth_token');
+      const token = localStorage.getItem('token');
       if (!token) {
         setPinnedPosts([]);
         setLoading(false);
@@ -53,7 +53,7 @@ export default function PinnedPostsSidebar({ courseId, onPostClick, themeConfig 
 
   useEffect(() => {
     const init = async () => {
-      const token = localStorage.getItem('auth_token');
+      const token = localStorage.getItem('token');
       if (!token) return;
 
       try {

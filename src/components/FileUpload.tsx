@@ -25,7 +25,7 @@ export default function FileUpload({ courseId, lessonId, onUploadComplete }: Fil
     setUploadProgress(0);
 
     try {
-      const token = localStorage.getItem('auth_token');
+      const token = localStorage.getItem('token');
       if (!token) throw new Error('Not authenticated');
 
       const formData = new FormData();

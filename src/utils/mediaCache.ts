@@ -24,7 +24,7 @@ class MediaCache {
   }
 
   private async fetchMedia(fileId: string, mediaUrl: string): Promise<string> {
-    const token = localStorage.getItem('auth_token');
+    const token = localStorage.getItem('token');
     if (!token) {
       throw new Error('No authentication token found');
     }

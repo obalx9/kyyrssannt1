@@ -65,7 +65,7 @@ export default function StudentsManager() {
 
   const loadData = async () => {
     try {
-      const token = localStorage.getItem('auth_token');
+      const token = localStorage.getItem('token');
       if (!token) {
         navigate('/login');
         return;
@@ -105,7 +105,7 @@ export default function StudentsManager() {
       const isNumeric = /^\d+$/.test(identifier);
       const cleanUsername = identifier.startsWith('@') ? identifier.slice(1) : identifier;
 
-      const token = localStorage.getItem('auth_token');
+      const token = localStorage.getItem('token');
       if (!token) {
         alert(t('failedToFindStudent') + ': No auth token');
         setAdding(false);
@@ -167,7 +167,7 @@ export default function StudentsManager() {
 
   const handleRemoveStudent = async (enrollmentId: string) => {
     try {
-      const token = localStorage.getItem('auth_token');
+      const token = localStorage.getItem('token');
       if (!token) throw new Error('No auth token');
       apiClient.setToken(token);
       await apiClient.removeEnrollmentById(enrollmentId);
@@ -180,7 +180,7 @@ export default function StudentsManager() {
 
   const handleRemovePendingInvitation = async (pendingId: string) => {
     try {
-      const token = localStorage.getItem('auth_token');
+      const token = localStorage.getItem('token');
       if (!token) throw new Error('No auth token');
       apiClient.setToken(token);
       await apiClient.deletePendingEnrollment(courseId!, pendingId);

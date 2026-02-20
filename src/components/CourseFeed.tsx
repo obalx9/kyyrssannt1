@@ -184,7 +184,7 @@ export default function CourseFeed({
   }, [activePostIndex, filteredPosts.length, onPositionChange]);
 
   const loadAuthToken = async () => {
-    const token = localStorage.getItem('auth_token');
+    const token = localStorage.getItem('token');
     if (token) {
       setAuthToken(token);
     }
@@ -192,7 +192,7 @@ export default function CourseFeed({
 
   const loadPinnedPosts = async () => {
     try {
-      const token = localStorage.getItem('auth_token');
+      const token = localStorage.getItem('token');
       if (!token) return;
       apiClient.setToken(token);
 
@@ -217,7 +217,7 @@ export default function CourseFeed({
     setPinnedPostIds(newPinnedIds);
 
     try {
-      const token = localStorage.getItem('auth_token');
+      const token = localStorage.getItem('token');
       if (!token) {
         setPinnedPostIds(oldPinnedIds);
         return;
@@ -411,7 +411,7 @@ export default function CourseFeed({
 
   const loadPosts = async () => {
     try {
-      const token = localStorage.getItem('auth_token');
+      const token = localStorage.getItem('token');
       if (!token) {
         setLoading(false);
         return;
@@ -510,7 +510,7 @@ export default function CourseFeed({
 
   const handleSavePost = async () => {
     try {
-      const token = localStorage.getItem('auth_token');
+      const token = localStorage.getItem('token');
       if (!token) throw new Error('No auth token');
       apiClient.setToken(token);
 
@@ -565,7 +565,7 @@ export default function CourseFeed({
     if (!confirm(t('deletePostConfirm'))) return;
 
     try {
-      const token = localStorage.getItem('auth_token');
+      const token = localStorage.getItem('token');
       if (!token) throw new Error('No auth token');
       apiClient.setToken(token);
       await apiClient.deletePost(postId);

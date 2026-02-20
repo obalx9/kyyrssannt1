@@ -332,7 +332,7 @@ export class ApiClient {
   }
 
   async getTelegramFileUrl(fileId: string, courseId: string): Promise<string> {
-    const token = this.token || localStorage.getItem('auth_token') || '';
+    const token = this.token || localStorage.getItem('token') || '';
     const response = await fetch(
       `${API_URL}/api/telegram/file/${encodeURIComponent(fileId)}?course_id=${encodeURIComponent(courseId)}`,
       { headers: { 'Authorization': `Bearer ${token}` } }
@@ -343,7 +343,7 @@ export class ApiClient {
   }
 
   buildTelegramFileUrl(fileId: string, courseId: string): string {
-    const token = this.token || localStorage.getItem('auth_token') || '';
+    const token = this.token || localStorage.getItem('token') || '';
     return `${API_URL}/api/telegram/file/${encodeURIComponent(fileId)}?course_id=${encodeURIComponent(courseId)}&token=${encodeURIComponent(token)}`;
   }
 }

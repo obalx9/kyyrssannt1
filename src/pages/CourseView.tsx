@@ -138,7 +138,7 @@ export default function CourseView() {
     if (!courseId || !user) return;
 
     try {
-      const token = localStorage.getItem('auth_token');
+      const token = localStorage.getItem('token');
       if (token) {
         apiClient.setToken(token);
       }

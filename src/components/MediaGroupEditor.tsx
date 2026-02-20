@@ -39,7 +39,7 @@ export default function MediaGroupEditor({
     console.log('[MediaGroupEditor] Migrating legacy media:', legacyItems);
 
     try {
-      const token = localStorage.getItem('auth_token');
+      const token = localStorage.getItem('token');
       if (!token) {
         console.error('[MediaGroupEditor] No auth token for migration');
         return;
@@ -94,7 +94,7 @@ export default function MediaGroupEditor({
         await migrateLegacyMedia();
       }
 
-      const token = localStorage.getItem('auth_token');
+      const token = localStorage.getItem('token');
       if (!token) {
         throw new Error('No auth token');
       }
@@ -133,7 +133,7 @@ export default function MediaGroupEditor({
     try {
       console.log('[MediaGroupEditor] Deleting media:', mediaId);
 
-      const token = localStorage.getItem('auth_token');
+      const token = localStorage.getItem('token');
       if (!token) throw new Error('No auth token');
       apiClient.setToken(token);
 
@@ -197,7 +197,7 @@ export default function MediaGroupEditor({
   const reorderMediaItems = async (items: MediaItem[]) => {
     try {
       console.log('[MediaGroupEditor] Reordering media items');
-      const token = localStorage.getItem('auth_token');
+      const token = localStorage.getItem('token');
       if (!token) throw new Error('No auth token');
       apiClient.setToken(token);
 
@@ -214,7 +214,7 @@ export default function MediaGroupEditor({
 
   const updatePostMediaCount = async (count: number) => {
     try {
-      const token = localStorage.getItem('auth_token');
+      const token = localStorage.getItem('token');
       if (!token) throw new Error('No auth token');
       apiClient.setToken(token);
       await apiClient.updatePost(postId, { media_count: count });
@@ -226,7 +226,7 @@ export default function MediaGroupEditor({
   const handleSavePost = async () => {
     setSaving(true);
     try {
-      const token = localStorage.getItem('auth_token');
+      const token = localStorage.getItem('token');
       if (!token) throw new Error('No auth token');
       apiClient.setToken(token);
 
@@ -259,7 +259,7 @@ export default function MediaGroupEditor({
           if (item.storage_path) {
             url = apiClient.getMediaUrl(item.storage_path);
           } else if (item.telegram_file_id) {
-            const token = localStorage.getItem('auth_token');
+            const token = localStorage.getItem('token');
             if (!token) throw new Error('No auth token');
             apiClient.setToken(token);
             url = await apiClient.getTelegramFileUrl(item.telegram_file_id, courseId);

@@ -71,7 +71,7 @@ export default function CourseEdit() {
   const loadPreviewPosts = async () => {
     if (!courseId) return;
     try {
-      const token = localStorage.getItem('auth_token');
+      const token = localStorage.getItem('token');
       if (token) apiClient.setToken(token);
       const data = await apiClient.getCoursePosts(courseId, 3, 0);
       setPreviewPosts(data || []);
@@ -91,7 +91,7 @@ export default function CourseEdit() {
 
   const loadCourse = async () => {
     try {
-      const token = localStorage.getItem('auth_token');
+      const token = localStorage.getItem('token');
       if (!token) {
         navigate('/login');
         return;
@@ -143,7 +143,7 @@ export default function CourseEdit() {
 
     setSaving(true);
     try {
-      const token = localStorage.getItem('auth_token');
+      const token = localStorage.getItem('token');
       if (!token) throw new Error('No auth token');
       apiClient.setToken(token);
 

@@ -41,7 +41,7 @@ export default function MediaGallery({ items, courseId, onMediaClick, courseWate
           if (item.storage_path) {
             url = apiClient.getMediaUrl(item.storage_path);
           } else if (item.telegram_file_id) {
-            const token = localStorage.getItem('auth_token');
+            const token = localStorage.getItem('token');
             if (!token) {
               throw new Error('No auth token');
             }

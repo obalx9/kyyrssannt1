@@ -62,7 +62,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     loadUser();
 
     const handleStorageChange = (e: StorageEvent) => {
-      if (e.key === 'auth_token') {
+      if (e.key === 'token') {
         loadUser();
       }
     };
