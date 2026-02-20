@@ -1697,7 +1697,131 @@ app.post('/api/telegram/webhook/:secret', async (req, res) => {
     }
 
     const bot = botResult.rows[0];
-    const courseId = bot.course_id;
+
+    async function tgSend(method, body) {
+      return fetch(`https://api.telegram.org/bot${bot.bot_token}/${method}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+    }
+
+    async function showCourseSelector(chatId, promptText) {
+      const coursesResult = await pool.query(
+        `SELECT c.id, c.title FROM courses c
+         JOIN telegram_bots tb ON tb.course_id = c.id
+         WHERE tb.id = $1
+         ORDER BY c.title`,
+        [bot.id]
+      );
+
+      const allCourses = await pool.query(
+        `SELECT c.id, c.title FROM courses c
+         JOIN sellers s ON c.seller_id = s.id
+         WHERE s.id = (SELECT created_by FROM telegram_bots WHERE id = $1)
+         ORDER BY c.title`,
+        [bot.id]
+      );
+
+      const courses = allCourses.rows.length > 0 ? allCourses.rows : coursesResult.rows;
+
+      if (courses.length === 0) {
+        await tgSend('sendMessage', { chat_id: chatId, text: 'У вас нет доступных курсов.' });
+        return;
+      }
+
+      const buttons = courses.map(c => ([{
+        text: c.title,
+        callback_data: `import:${c.id}`
+      }]));
+
+      await tgSend('sendMessage', {
+        chat_id: chatId,
+        text: promptText,
+        reply_markup: { inline_keyboard: buttons }
+      });
+    }
+
+    if (update.callback_query) {
+      const cb = update.callback_query;
+      const chatId = cb.message.chat.id;
+      const data = cb.data || '';
+
+      await tgSend('answerCallbackQuery', { callback_query_id: cb.id });
+
+      if (data.startsWith('import:')) {
+        const importCourseId = data.replace('import:', '');
+
+        const courseCheck = await pool.query(
+          'SELECT id, title FROM courses WHERE id = $1',
+          [importCourseId]
+        );
+
+        if (courseCheck.rows.length === 0) {
+          await tgSend('sendMessage', { chat_id: chatId, text: 'Курс не найден.' });
+          return res.json({ ok: true });
+        }
+
+        await pool.query(
+          `UPDATE telegram_import_sessions SET status = 'completed', completed_at = NOW()
+           WHERE status = 'in_progress'`
+        );
+
+        await pool.query(
+          `INSERT INTO telegram_import_sessions (course_id, channel_username, status)
+           VALUES ($1, $2, 'in_progress')`,
+          [importCourseId, cb.from?.username || cb.from?.id?.toString() || 'unknown']
+        );
+
+        await tgSend('editMessageText', {
+          chat_id: chatId,
+          message_id: cb.message.message_id,
+          text: `Импорт в курс: "${courseCheck.rows[0].title}"\n\nПересылайте сообщения из вашего канала — они автоматически добавятся в курс.\n\nКогда закончите, нажмите кнопку ниже.`,
+          reply_markup: {
+            inline_keyboard: [[{ text: 'Завершить импорт', callback_data: 'done' }]]
+          }
+        });
+
+        console.log('[Webhook] Import session started via button for course:', importCourseId);
+        return res.json({ ok: true });
+      }
+
+      if (data === 'done') {
+        const sessionResult = await pool.query(
+          `SELECT tis.*, c.title FROM telegram_import_sessions tis
+           JOIN courses c ON tis.course_id = c.id
+           WHERE tis.status = 'in_progress'
+           ORDER BY tis.started_at DESC LIMIT 1`
+        );
+
+        if (sessionResult.rows.length === 0) {
+          await tgSend('sendMessage', { chat_id: chatId, text: 'Нет активного импорта.' });
+          return res.json({ ok: true });
+        }
+
+        const session = sessionResult.rows[0];
+        await pool.query(
+          `UPDATE telegram_import_sessions SET status = 'completed', completed_at = NOW() WHERE id = $1`,
+          [session.id]
+        );
+
+        await tgSend('editMessageText', {
+          chat_id: chatId,
+          message_id: cb.message.message_id,
+          text: `Импорт завершён!\n\nКурс: "${session.title}"\nДобавлено сообщений: ${session.imported_messages}`
+        });
+
+        console.log('[Webhook] Import session completed via button:', session.id);
+        return res.json({ ok: true });
+      }
+
+      if (data === 'import_menu') {
+        await showCourseSelector(chatId, 'Выберите курс для импорта:');
+        return res.json({ ok: true });
+      }
+
+      return res.json({ ok: true });
+    }
 
     if (!update.message && !update.channel_post) {
       console.log('[Webhook] No message or channel_post in update');
@@ -1709,21 +1833,41 @@ app.post('/api/telegram/webhook/:secret', async (req, res) => {
     const isPrivateMessage = message.chat && message.chat.type === 'private';
     const messageText = message.text || '';
 
+    if (isPrivateMessage && (messageText.startsWith('/start') || messageText.startsWith('/help'))) {
+      const chatId = message.chat.id;
+
+      const activeSession = await pool.query(
+        `SELECT tis.*, c.title FROM telegram_import_sessions tis
+         JOIN courses c ON tis.course_id = c.id
+         WHERE tis.status = 'in_progress'
+         ORDER BY tis.started_at DESC LIMIT 1`
+      );
+
+      let statusText = '';
+      if (activeSession.rows.length > 0) {
+        statusText = `\n\nСейчас активен импорт в курс: "${activeSession.rows[0].title}" (${activeSession.rows[0].imported_messages} сообщений)`;
+      }
+
+      await tgSend('sendMessage', {
+        chat_id: chatId,
+        text: `Привет! Я бот для импорта контента в курсы.${statusText}\n\nВыберите действие:`,
+        reply_markup: {
+          inline_keyboard: [
+            [{ text: 'Начать импорт', callback_data: 'import_menu' }],
+            ...(activeSession.rows.length > 0 ? [[{ text: 'Завершить текущий импорт', callback_data: 'done' }]] : [])
+          ]
+        }
+      });
+      return res.json({ ok: true });
+    }
+
     if (isPrivateMessage && messageText.startsWith('/import')) {
       const parts = messageText.trim().split(/\s+/);
       const importCourseId = parts[1];
       const chatId = message.chat.id;
 
-      async function sendBotReply(text) {
-        await fetch(`https://api.telegram.org/bot${bot.bot_token}/sendMessage`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ chat_id: chatId, text }),
-        });
-      }
-
       if (!importCourseId) {
-        await sendBotReply('Укажите ID курса. Пример: /import b57d45e7-1b9a-4a6a-95fa-808447c2cf8e');
+        await showCourseSelector(chatId, 'Выберите курс для импорта:');
         return res.json({ ok: true });
       }
 
@@ -1733,14 +1877,13 @@ app.post('/api/telegram/webhook/:secret', async (req, res) => {
       );
 
       if (courseCheck.rows.length === 0) {
-        await sendBotReply(`Курс с ID "${importCourseId}" не найден. Проверьте ID и попробуйте снова.`);
+        await showCourseSelector(chatId, `Курс с ID "${importCourseId}" не найден.\n\nВыберите курс из списка:`);
         return res.json({ ok: true });
       }
 
       await pool.query(
         `UPDATE telegram_import_sessions SET status = 'completed', completed_at = NOW()
-         WHERE course_id = $1 AND status = 'in_progress'`,
-        [importCourseId]
+         WHERE status = 'in_progress'`
       );
 
       await pool.query(
@@ -1749,23 +1892,19 @@ app.post('/api/telegram/webhook/:secret', async (req, res) => {
         [importCourseId, message.from?.username || message.from?.id?.toString() || 'unknown']
       );
 
-      await sendBotReply(
-        `Режим импорта активирован для курса "${courseCheck.rows[0].title}".\n\nПересылайте сообщения из вашего канала, и они будут добавлены в курс.\n\nОтправьте /done когда закончите.`
-      );
+      await tgSend('sendMessage', {
+        chat_id: chatId,
+        text: `Импорт в курс: "${courseCheck.rows[0].title}"\n\nПересылайте сообщения из вашего канала — они автоматически добавятся в курс.\n\nКогда закончите, нажмите кнопку ниже.`,
+        reply_markup: {
+          inline_keyboard: [[{ text: 'Завершить импорт', callback_data: 'done' }]]
+        }
+      });
       console.log('[Webhook] Import session started for course:', importCourseId);
       return res.json({ ok: true });
     }
 
     if (isPrivateMessage && messageText.trim() === '/done') {
       const chatId = message.chat.id;
-
-      async function sendBotDoneReply(text) {
-        await fetch(`https://api.telegram.org/bot${bot.bot_token}/sendMessage`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ chat_id: chatId, text }),
-        });
-      }
 
       const sessionResult = await pool.query(
         `SELECT tis.*, c.title FROM telegram_import_sessions tis
@@ -1775,7 +1914,7 @@ app.post('/api/telegram/webhook/:secret', async (req, res) => {
       );
 
       if (sessionResult.rows.length === 0) {
-        await sendBotDoneReply('Нет активного импорта.');
+        await tgSend('sendMessage', { chat_id: chatId, text: 'Нет активного импорта.' });
         return res.json({ ok: true });
       }
 
@@ -1785,14 +1924,17 @@ app.post('/api/telegram/webhook/:secret', async (req, res) => {
         [session.id]
       );
 
-      await sendBotDoneReply(
-        `Импорт завершён! Добавлено сообщений: ${session.imported_messages}.\nКурс: "${session.title}"`
-      );
+      await tgSend('sendMessage', {
+        chat_id: chatId,
+        text: `Импорт завершён!\n\nКурс: "${session.title}"\nДобавлено сообщений: ${session.imported_messages}`
+      });
       console.log('[Webhook] Import session completed:', session.id);
       return res.json({ ok: true });
     }
 
-    if (isPrivateMessage && message.forward_date) {
+    const isForwarded = !!(message.forward_date || message.forward_origin || message.forward_from || message.forward_from_chat || message.forward_sender_name);
+
+    if (isPrivateMessage && isForwarded) {
       const activeSession = await pool.query(
         `SELECT * FROM telegram_import_sessions WHERE status = 'in_progress' ORDER BY started_at DESC LIMIT 1`
       );
