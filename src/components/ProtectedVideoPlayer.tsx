@@ -54,6 +54,10 @@ export default function ProtectedVideoPlayer({
         setError(null);
 
         const token = localStorage.getItem('token');
+        const urlWithToken = token && rawUrl.includes('/api/')
+          ? `${rawUrl}${rawUrl.includes('?') ? '&' : '?'}token=${encodeURIComponent(token)}`
+          : rawUrl;
+
         const response = await fetch(rawUrl, {
           headers: token ? { 'Authorization': `Bearer ${token}` } : {}
         });
