@@ -665,7 +665,7 @@ export default function CourseFeed({
 
   const getSecureMediaUrl = (fileId: string): string => {
     const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-    const apiUrl = import.meta.env.VITE_API_URL || 'https://keykurs.ru';
+    const apiUrl = import.meta.env.VITE_API_URL || 'https://api.keykurs.ru';
 
     // If fileId looks like a storage path (contains /), it's a local file - use backend URL
     if (fileId.includes('/')) {
