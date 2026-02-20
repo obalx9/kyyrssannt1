@@ -46,14 +46,15 @@ app.use('/uploads', express.static(uploadsDir));
 
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
-    const courseId = req.body.courseId;
-    const lessonId = req.body.lessonId;
+    const courseId = req.query.courseId || req.body.courseId;
+    const lessonId = req.query.lessonId || req.body.lessonId;
 
     console.log('[MULTER] CourseId:', courseId, 'LessonId:', lessonId);
+    console.log('[MULTER] Request query:', JSON.stringify(req.query, null, 2));
     console.log('[MULTER] Request body:', JSON.stringify(req.body, null, 2));
 
     if (!courseId) {
-      console.error('[MULTER] ERROR: courseId is missing!');
+      console.error('[MULTER] ERROR: courseId is missing! Please pass it as query parameter (?courseId=...) or form field');
       return cb(new Error('courseId is required'), null);
     }
 
@@ -1745,6 +1746,7 @@ app.post('/api/upload', authenticateToken, upload.single('file'), async (req, re
     console.log('[UPLOAD] Request started');
     console.log('[UPLOAD] User:', req.user);
     console.log('[UPLOAD] File received:', !!req.file);
+    console.log('[UPLOAD] Query:', JSON.stringify(req.query, null, 2));
     console.log('[UPLOAD] Body:', JSON.stringify(req.body, null, 2));
 
     if (!req.file) {
@@ -1752,7 +1754,8 @@ app.post('/api/upload', authenticateToken, upload.single('file'), async (req, re
       return res.status(400).json({ error: 'No file uploaded' });
     }
 
-    const { courseId, lessonId } = req.body;
+    const courseId = req.query.courseId || req.body.courseId;
+    const lessonId = req.query.lessonId || req.body.lessonId;
     console.log('[UPLOAD] CourseId:', courseId, 'LessonId:', lessonId);
     console.log('[UPLOAD] File info - name:', req.file.originalname, 'size:', req.file.size, 'path:', req.file.path);
 
