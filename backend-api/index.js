@@ -2008,7 +2008,7 @@ app.post('/api/telegram/webhook/:secret', async (req, res) => {
             const lastReceived = bufferCheck.rows[0].last_received ? new Date(bufferCheck.rows[0].last_received) : null;
             const timeSinceLastReceived = lastReceived ? Date.now() - lastReceived.getTime() : 0;
 
-            if (bufferCount < 2 && timeSinceLastReceived < 3000) {
+            if (bufferCount === 1 && timeSinceLastReceived < 3000) {
               await client.query('COMMIT');
               client.release();
               console.log('[Webhook] Buffered import media group item, waiting for more... (received', bufferCount, 'items,', timeSinceLastReceived, 'ms ago)');
@@ -2304,7 +2304,7 @@ app.post('/api/telegram/webhook/:secret', async (req, res) => {
         const lastReceived = bufferCheck.rows[0].last_received ? new Date(bufferCheck.rows[0].last_received) : null;
         const timeSinceLastReceived = lastReceived ? Date.now() - lastReceived.getTime() : 0;
 
-        if (bufferCount < 2 && timeSinceLastReceived < 3000) {
+        if (bufferCount === 1 && timeSinceLastReceived < 3000) {
           await client.query('COMMIT');
           console.log('[Webhook] Buffered media group item, waiting for more... (received', bufferCount, 'items,', timeSinceLastReceived, 'ms ago)');
           return res.json({ ok: true });
