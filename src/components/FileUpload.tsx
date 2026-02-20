@@ -30,8 +30,6 @@ export default function FileUpload({ courseId, lessonId, onUploadComplete }: Fil
 
       const formData = new FormData();
       formData.append('file', file);
-      formData.append('courseId', courseId);
-      if (lessonId) formData.append('lessonId', lessonId);
 
       const xhr = new XMLHttpRequest();
 
@@ -54,7 +52,13 @@ export default function FileUpload({ courseId, lessonId, onUploadComplete }: Fil
           }
         };
         xhr.onerror = () => reject(new Error('Upload failed'));
-        xhr.open('POST', `${API_URL}/api/upload`);
+
+        const params = new URLSearchParams();
+        params.append('courseId', courseId);
+        if (lessonId) params.append('lessonId', lessonId);
+
+        const uploadUrl = `${API_URL}/api/upload?${params.toString()}`;
+        xhr.open('POST', uploadUrl);
         xhr.setRequestHeader('Authorization', `Bearer ${token}`);
         xhr.send(formData);
       });
