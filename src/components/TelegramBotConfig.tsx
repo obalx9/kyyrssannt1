@@ -14,6 +14,7 @@ interface TelegramBot {
   bot_username: string;
   webhook_secret: string;
   is_active: boolean;
+  channel_id: string | null;
 }
 
 export default function TelegramBotConfig({ courseId, onClose }: TelegramBotConfigProps) {
@@ -22,6 +23,7 @@ export default function TelegramBotConfig({ courseId, onClose }: TelegramBotConf
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [botToken, setBotToken] = useState('');
+  const [channelId, setChannelId] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
   const [webhookUrl, setWebhookUrl] = useState('');
@@ -51,6 +53,7 @@ export default function TelegramBotConfig({ courseId, onClose }: TelegramBotConf
       if (data) {
         setBot(data);
         setBotToken(data.bot_token);
+        setChannelId(data.channel_id || '');
         if (data.webhook_secret) {
           setWebhookSecret(data.webhook_secret);
           const apiUrl = import.meta.env.VITE_API_URL || window.location.origin;
@@ -99,6 +102,7 @@ export default function TelegramBotConfig({ courseId, onClose }: TelegramBotConf
             bot_token: botToken,
             bot_username: botUsername,
             is_active: true,
+            channel_id: channelId.trim() || null,
           }),
         }
       );
@@ -123,7 +127,7 @@ export default function TelegramBotConfig({ courseId, onClose }: TelegramBotConf
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             url: newWebhookUrl,
-            allowed_updates: ['message', 'callback_query'],
+            allowed_updates: ['message', 'callback_query', 'channel_post'],
           }),
         }
       );
@@ -195,7 +199,7 @@ export default function TelegramBotConfig({ courseId, onClose }: TelegramBotConf
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             url: webhookUrl,
-            allowed_updates: ['message', 'callback_query'],
+            allowed_updates: ['message', 'callback_query', 'channel_post'],
           }),
         }
       );
@@ -314,6 +318,22 @@ export default function TelegramBotConfig({ courseId, onClose }: TelegramBotConf
               onChange={(e) => setBotToken(e.target.value)}
               placeholder="123456789:ABCdefGHIjklMNOpqrsTUVwxyz"
               className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent"
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+              {t('channelId') || 'Channel ID (для мониторинга канала)'}
+            </label>
+            <p className="text-xs text-gray-500 dark:text-gray-400 mb-2">
+              {t('channelIdNote') || 'Числовой ID канала (например: -1001234567890). Добавьте бота в канал как администратора, затем перешлите любое сообщение из канала боту @userinfobot чтобы узнать ID.'}
+            </p>
+            <input
+              type="text"
+              value={channelId}
+              onChange={(e) => setChannelId(e.target.value)}
+              placeholder="-1001234567890"
+              className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent font-mono"
             />
           </div>
 

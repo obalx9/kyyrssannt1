@@ -1500,7 +1500,7 @@ app.get('/api/courses/:courseId/telegram-bot', authenticateToken, async (req, re
     const { courseId } = req.params;
 
     const result = await pool.query(
-      `SELECT id, bot_token, bot_username, webhook_secret, is_active, created_at
+      `SELECT id, bot_token, bot_username, webhook_secret, is_active, channel_id, created_at
        FROM telegram_bots
        WHERE course_id = $1
        ORDER BY is_active DESC, created_at DESC
@@ -1522,7 +1522,7 @@ app.get('/api/courses/:courseId/telegram-bot', authenticateToken, async (req, re
 app.post('/api/courses/:courseId/telegram-bot', authenticateToken, async (req, res) => {
   try {
     const { courseId } = req.params;
-    const { bot_token, bot_username, is_active } = req.body;
+    const { bot_token, bot_username, is_active, channel_id } = req.body;
 
     const sellerCheck = await pool.query(
       `SELECT s.id FROM sellers s
@@ -1551,17 +1551,17 @@ app.post('/api/courses/:courseId/telegram-bot', authenticateToken, async (req, r
     if (existing.rows.length > 0) {
       result = await pool.query(
         `UPDATE telegram_bots
-         SET bot_token = $1, bot_username = $2, is_active = $3, webhook_secret = $4
+         SET bot_token = $1, bot_username = $2, is_active = $3, webhook_secret = $4, channel_id = $6
          WHERE course_id = $5
-         RETURNING id, bot_token, bot_username, webhook_secret, is_active, created_at`,
-        [bot_token, bot_username, is_active, webhookSecret, courseId]
+         RETURNING id, bot_token, bot_username, webhook_secret, is_active, channel_id, created_at`,
+        [bot_token, bot_username, is_active, webhookSecret, courseId, channel_id || null]
       );
     } else {
       result = await pool.query(
-        `INSERT INTO telegram_bots (course_id, seller_id, bot_token, bot_username, is_active, webhook_secret)
-         VALUES ($1, $2, $3, $4, $5, $6)
-         RETURNING id, bot_token, bot_username, webhook_secret, is_active, created_at`,
-        [courseId, sellerCheck.rows[0].id, bot_token, bot_username, is_active, webhookSecret]
+        `INSERT INTO telegram_bots (course_id, seller_id, bot_token, bot_username, is_active, webhook_secret, channel_id)
+         VALUES ($1, $2, $3, $4, $5, $6, $7)
+         RETURNING id, bot_token, bot_username, webhook_secret, is_active, channel_id, created_at`,
+        [courseId, sellerCheck.rows[0].id, bot_token, bot_username, is_active, webhookSecret, channel_id || null]
       );
     }
 
@@ -1575,7 +1575,7 @@ app.post('/api/courses/:courseId/telegram-bot', authenticateToken, async (req, r
 app.put('/api/courses/:courseId/telegram-bot', authenticateToken, async (req, res) => {
   try {
     const { courseId } = req.params;
-    const { bot_token, bot_username, is_active } = req.body;
+    const { bot_token, bot_username, is_active, channel_id } = req.body;
 
     const sellerCheck = await pool.query(
       `SELECT s.id FROM sellers s
@@ -1597,10 +1597,10 @@ app.put('/api/courses/:courseId/telegram-bot', authenticateToken, async (req, re
     const result = await pool.query(
       `UPDATE telegram_bots
        SET bot_token = $1, bot_username = $2, is_active = $3,
-           webhook_secret = $5
+           webhook_secret = $5, channel_id = $6
        WHERE course_id = $4
-       RETURNING id, bot_token, bot_username, webhook_secret, is_active, created_at`,
-      [bot_token, bot_username, is_active, courseId, newSecret]
+       RETURNING id, bot_token, bot_username, webhook_secret, is_active, channel_id, created_at`,
+      [bot_token, bot_username, is_active, courseId, newSecret, channel_id || null]
     );
 
     if (result.rows.length === 0) {
@@ -1781,7 +1781,10 @@ app.post('/api/telegram/webhook/:secret', async (req, res) => {
 
         await pool.query(
           `UPDATE telegram_import_sessions SET status = 'completed', completed_at = NOW()
-           WHERE status = 'in_progress'`
+           WHERE status = 'in_progress' AND course_id IN (
+             SELECT id FROM courses WHERE seller_id = $1
+           )`,
+          [bot.seller_id]
         );
 
         await pool.query(
@@ -1807,8 +1810,9 @@ app.post('/api/telegram/webhook/:secret', async (req, res) => {
         const sessionResult = await pool.query(
           `SELECT tis.*, c.title FROM telegram_import_sessions tis
            JOIN courses c ON tis.course_id = c.id
-           WHERE tis.status = 'in_progress'
-           ORDER BY tis.started_at DESC LIMIT 1`
+           WHERE tis.status = 'in_progress' AND c.seller_id = $1
+           ORDER BY tis.started_at DESC LIMIT 1`,
+          [bot.seller_id]
         );
 
         if (sessionResult.rows.length === 0) {
@@ -1856,8 +1860,9 @@ app.post('/api/telegram/webhook/:secret', async (req, res) => {
       const activeSession = await pool.query(
         `SELECT tis.*, c.title FROM telegram_import_sessions tis
          JOIN courses c ON tis.course_id = c.id
-         WHERE tis.status = 'in_progress'
-         ORDER BY tis.started_at DESC LIMIT 1`
+         WHERE tis.status = 'in_progress' AND c.seller_id = $1
+         ORDER BY tis.started_at DESC LIMIT 1`,
+        [bot.seller_id]
       );
 
       let statusText = '';
@@ -1900,7 +1905,10 @@ app.post('/api/telegram/webhook/:secret', async (req, res) => {
 
       await pool.query(
         `UPDATE telegram_import_sessions SET status = 'completed', completed_at = NOW()
-         WHERE status = 'in_progress'`
+         WHERE status = 'in_progress' AND course_id IN (
+           SELECT id FROM courses WHERE seller_id = $1
+         )`,
+        [bot.seller_id]
       );
 
       await pool.query(
@@ -1926,8 +1934,9 @@ app.post('/api/telegram/webhook/:secret', async (req, res) => {
       const sessionResult = await pool.query(
         `SELECT tis.*, c.title FROM telegram_import_sessions tis
          JOIN courses c ON tis.course_id = c.id
-         WHERE tis.status = 'in_progress'
-         ORDER BY tis.started_at DESC LIMIT 1`
+         WHERE tis.status = 'in_progress' AND c.seller_id = $1
+         ORDER BY tis.started_at DESC LIMIT 1`,
+        [bot.seller_id]
       );
 
       if (sessionResult.rows.length === 0) {
@@ -1953,7 +1962,11 @@ app.post('/api/telegram/webhook/:secret', async (req, res) => {
 
     if (isPrivateMessage && isForwarded) {
       const activeSession = await pool.query(
-        `SELECT * FROM telegram_import_sessions WHERE status = 'in_progress' ORDER BY started_at DESC LIMIT 1`
+        `SELECT tis.* FROM telegram_import_sessions tis
+         JOIN courses c ON tis.course_id = c.id
+         WHERE tis.status = 'in_progress' AND c.seller_id = $1
+         ORDER BY tis.started_at DESC LIMIT 1`,
+        [bot.seller_id]
       );
 
       if (activeSession.rows.length > 0) {
@@ -2073,10 +2086,22 @@ app.post('/api/telegram/webhook/:secret', async (req, res) => {
       }
     }
 
-    if (!message.chat || message.chat.id.toString() !== bot.channel_id) {
+    if (!bot.channel_id) {
+      console.log('[Webhook] Bot has no channel_id configured, ignoring channel_post');
+      return res.json({ ok: true });
+    }
+
+    if (!message.chat || message.chat.id.toString() !== bot.channel_id.toString()) {
       console.log('[Webhook] Message not from configured channel:', message.chat?.id, 'expected:', bot.channel_id);
       return res.json({ ok: true });
     }
+
+    if (!bot.course_id) {
+      console.log('[Webhook] Bot has no course_id configured, cannot save channel post');
+      return res.json({ ok: true });
+    }
+
+    const channelCourseId = bot.course_id;
 
     const client = await pool.connect();
     try {
@@ -2090,7 +2115,7 @@ app.post('/api/telegram/webhook/:secret', async (req, res) => {
            (course_id, media_group_id, telegram_message_id, media_data, caption, message_date)
            VALUES ($1, $2, $3, $4, $5, $6)`,
           [
-            courseId,
+            channelCourseId,
             mediaGroupId,
             message.message_id,
             JSON.stringify(message),
@@ -2102,7 +2127,7 @@ app.post('/api/telegram/webhook/:secret', async (req, res) => {
         const bufferCheck = await client.query(
           `SELECT COUNT(*) as count FROM telegram_media_group_buffer
            WHERE course_id = $1 AND media_group_id = $2 AND received_at > NOW() - INTERVAL '3 seconds'`,
-          [courseId, mediaGroupId]
+          [channelCourseId, mediaGroupId]
         );
 
         if (parseInt(bufferCheck.rows[0].count) < 2) {
@@ -2115,7 +2140,7 @@ app.post('/api/telegram/webhook/:secret', async (req, res) => {
           `SELECT * FROM telegram_media_group_buffer
            WHERE course_id = $1 AND media_group_id = $2
            ORDER BY telegram_message_id`,
-          [courseId, mediaGroupId]
+          [channelCourseId, mediaGroupId]
         );
 
         const firstMessage = JSON.parse(bufferedMessages.rows[0].media_data);
@@ -2127,7 +2152,7 @@ app.post('/api/telegram/webhook/:secret', async (req, res) => {
            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
            RETURNING id`,
           [
-            courseId,
+            channelCourseId,
             'telegram',
             '',
             caption,
@@ -2209,7 +2234,7 @@ app.post('/api/telegram/webhook/:secret', async (req, res) => {
 
         await client.query(
           'DELETE FROM telegram_media_group_buffer WHERE course_id = $1 AND media_group_id = $2',
-          [courseId, mediaGroupId]
+          [channelCourseId, mediaGroupId]
         );
 
         console.log('[Webhook] Created media group post:', postId);
@@ -2289,7 +2314,7 @@ app.post('/api/telegram/webhook/:secret', async (req, res) => {
            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
            RETURNING id`,
           [
-            courseId,
+            channelCourseId,
             'telegram',
             '',
             textContent,
@@ -2639,7 +2664,7 @@ app.get('/api/posts/:id/media', authenticateToken, async (req, res) => {
 app.post('/api/posts/:id/media', authenticateToken, async (req, res) => {
   try {
     const postId = req.params.id;
-    const { media_type, storage_path, telegram_file_id, telegram_thumbnail_file_id, file_name, file_size, order_index } = req.body;
+    const { media_type, storage_path, file_path, telegram_file_id, telegram_thumbnail_file_id, file_name, file_size, order_index } = req.body;
 
     const postCheck = await pool.query(
       `SELECT cp.id FROM course_posts cp
@@ -2653,10 +2678,12 @@ app.post('/api/posts/:id/media', authenticateToken, async (req, res) => {
       return res.status(403).json({ error: 'Not authorized' });
     }
 
+    const resolvedFilePath = file_path || storage_path || null;
+
     const result = await pool.query(
-      `INSERT INTO course_post_media (post_id, media_type, storage_path, telegram_file_id, telegram_thumbnail_file_id, file_name, file_size, order_index)
+      `INSERT INTO course_post_media (post_id, media_type, file_path, telegram_file_id, telegram_thumbnail_file_id, file_name, file_size, order_index)
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING *`,
-      [postId, media_type, storage_path || null, telegram_file_id || null, telegram_thumbnail_file_id || null, file_name || null, file_size || null, order_index ?? 0]
+      [postId, media_type, resolvedFilePath, telegram_file_id || null, telegram_thumbnail_file_id || null, file_name || null, file_size || null, order_index ?? 0]
     );
 
     res.json(result.rows[0]);
