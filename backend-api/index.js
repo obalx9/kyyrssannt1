@@ -1703,6 +1703,127 @@ app.post('/api/telegram/webhook/:secret', async (req, res) => {
 
     const message = update.message || update.channel_post;
 
+    const isPrivateMessage = message.chat && message.chat.type === 'private';
+    const messageText = message.text || '';
+
+    if (isPrivateMessage && messageText.startsWith('/import')) {
+      const parts = messageText.trim().split(/\s+/);
+      const importCourseId = parts[1];
+      const chatId = message.chat.id;
+
+      async function sendBotReply(text) {
+        await fetch(`https://api.telegram.org/bot${bot.bot_token}/sendMessage`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ chat_id: chatId, text }),
+        });
+      }
+
+      if (!importCourseId) {
+        await sendBotReply('Укажите ID курса. Пример: /import b57d45e7-1b9a-4a6a-95fa-808447c2cf8e');
+        return res.json({ ok: true });
+      }
+
+      const courseCheck = await pool.query(
+        'SELECT id, title FROM courses WHERE id = $1',
+        [importCourseId]
+      );
+
+      if (courseCheck.rows.length === 0) {
+        await sendBotReply(`Курс с ID "${importCourseId}" не найден. Проверьте ID и попробуйте снова.`);
+        return res.json({ ok: true });
+      }
+
+      await pool.query(
+        `UPDATE telegram_import_sessions SET status = 'completed', completed_at = NOW()
+         WHERE course_id = $1 AND status = 'in_progress'`,
+        [importCourseId]
+      );
+
+      await pool.query(
+        `INSERT INTO telegram_import_sessions (course_id, channel_username, status)
+         VALUES ($1, $2, 'in_progress')`,
+        [importCourseId, message.from?.username || message.from?.id?.toString() || 'unknown']
+      );
+
+      await sendBotReply(
+        `Режим импорта активирован для курса "${courseCheck.rows[0].title}".\n\nПересылайте сообщения из вашего канала, и они будут добавлены в курс.\n\nОтправьте /done когда закончите.`
+      );
+      console.log('[Webhook] Import session started for course:', importCourseId);
+      return res.json({ ok: true });
+    }
+
+    if (isPrivateMessage && messageText.trim() === '/done') {
+      const chatId = message.chat.id;
+
+      async function sendBotDoneReply(text) {
+        await fetch(`https://api.telegram.org/bot${bot.bot_token}/sendMessage`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ chat_id: chatId, text }),
+        });
+      }
+
+      const sessionResult = await pool.query(
+        `SELECT tis.*, c.title FROM telegram_import_sessions tis
+         JOIN courses c ON tis.course_id = c.id
+         WHERE tis.status = 'in_progress'
+         ORDER BY tis.started_at DESC LIMIT 1`
+      );
+
+      if (sessionResult.rows.length === 0) {
+        await sendBotDoneReply('Нет активного импорта.');
+        return res.json({ ok: true });
+      }
+
+      const session = sessionResult.rows[0];
+      await pool.query(
+        `UPDATE telegram_import_sessions SET status = 'completed', completed_at = NOW() WHERE id = $1`,
+        [session.id]
+      );
+
+      await sendBotDoneReply(
+        `Импорт завершён! Добавлено сообщений: ${session.imported_messages}.\nКурс: "${session.title}"`
+      );
+      console.log('[Webhook] Import session completed:', session.id);
+      return res.json({ ok: true });
+    }
+
+    if (isPrivateMessage && message.forward_date) {
+      const activeSession = await pool.query(
+        `SELECT * FROM telegram_import_sessions WHERE status = 'in_progress' ORDER BY started_at DESC LIMIT 1`
+      );
+
+      if (activeSession.rows.length > 0) {
+        const session = activeSession.rows[0];
+        const textContent = message.text || message.caption || '';
+        const client = await pool.connect();
+        try {
+          await client.query('BEGIN');
+
+          const postResult = await client.query(
+            `INSERT INTO course_posts (course_id, source_type, text_content, telegram_message_id, published_at)
+             VALUES ($1, 'telegram', $2, $3, $4) RETURNING id`,
+            [session.course_id, textContent, message.forward_from_message_id || message.message_id, new Date(message.date * 1000)]
+          );
+
+          await client.query(
+            `UPDATE telegram_import_sessions SET imported_messages = imported_messages + 1 WHERE id = $1`,
+            [session.id]
+          );
+
+          await client.query('COMMIT');
+          console.log('[Webhook] Imported forwarded message as post:', postResult.rows[0].id);
+        } catch (err) {
+          await client.query('ROLLBACK');
+          console.error('[Webhook] Error saving forwarded message:', err);
+        } finally {
+          client.release();
+        }
+        return res.json({ ok: true });
+      }
+    }
+
     if (!message.chat || message.chat.id.toString() !== bot.channel_id) {
       console.log('[Webhook] Message not from configured channel:', message.chat?.id, 'expected:', bot.channel_id);
       return res.json({ ok: true });
