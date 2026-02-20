@@ -2284,7 +2284,7 @@ app.post('/api/telegram/webhook/:secret', async (req, res) => {
             await client.query(
               `INSERT INTO course_post_media
                (post_id, media_type, telegram_file_id, telegram_thumbnail_file_id,
-                file_name, file_size, mime_type, width, height, duration, order_index)
+                file_name, file_size, mime_type, width, height, duration, display_order)
                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
               [postId, mediaType, fileId, thumbnailFileId, fileName, fileSize, mimeType, width, height, duration, i]
             );
@@ -2685,7 +2685,7 @@ app.get('/api/posts/:id/media', authenticateToken, async (req, res) => {
          SELECT id FROM students WHERE user_id = $2
        )
        WHERE cpm.post_id = $1 AND (s.user_id = $2 OR ce.id IS NOT NULL)
-       ORDER BY cpm.order_index ASC`,
+       ORDER BY cpm.display_order ASC`,
       [postId, req.user.userId]
     );
 
@@ -2716,9 +2716,9 @@ app.post('/api/posts/:id/media', authenticateToken, async (req, res) => {
     const resolvedFilePath = file_path || storage_path || null;
 
     const result = await pool.query(
-      `INSERT INTO course_post_media (post_id, media_type, file_path, telegram_file_id, telegram_thumbnail_file_id, file_name, file_size, order_index)
+      `INSERT INTO course_post_media (post_id, media_type, file_path, file_name, telegram_file_id, telegram_thumbnail_file_id, file_size, display_order)
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING *`,
-      [postId, media_type, resolvedFilePath, telegram_file_id || null, telegram_thumbnail_file_id || null, file_name || null, file_size || null, order_index ?? 0]
+      [postId, media_type, resolvedFilePath, file_name || null, telegram_file_id || null, telegram_thumbnail_file_id || null, file_size || null, order_index ?? 0]
     );
 
     res.json(result.rows[0]);
@@ -2746,7 +2746,7 @@ app.put('/api/posts/:id/media/:mediaId', authenticateToken, async (req, res) => 
     }
 
     const result = await pool.query(
-      'UPDATE course_post_media SET order_index = $1 WHERE id = $2 AND post_id = $3 RETURNING *',
+      'UPDATE course_post_media SET display_order = $1 WHERE id = $2 AND post_id = $3 RETURNING *',
       [order_index, mediaId, postId]
     );
 

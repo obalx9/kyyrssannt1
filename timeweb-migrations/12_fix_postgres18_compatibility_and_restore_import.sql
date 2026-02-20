@@ -89,6 +89,7 @@ CREATE TABLE IF NOT EXISTS course_post_media (
   post_id uuid REFERENCES course_posts(id) ON DELETE CASCADE NOT NULL,
   media_type text NOT NULL,
   file_path text,
+  file_name text,
   telegram_file_id text,
   telegram_thumbnail_file_id text,
   thumbnail_path text,
