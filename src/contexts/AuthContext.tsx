@@ -28,7 +28,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const loadUser = useCallback(async () => {
     const currentLoadId = ++loadIdRef.current;
     try {
-      const token = localStorage.getItem('auth_token');
+      const token = localStorage.getItem('token');
 
       if (currentLoadId !== loadIdRef.current) return;
 
