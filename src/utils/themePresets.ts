@@ -825,6 +825,26 @@ export function getDefaultTheme(): ThemePreset {
   return themePresets[0];
 }
 
+export function mergeThemeConfig(partial: Partial<ThemeConfig>): ThemeConfig {
+  const def = getDefaultTheme().config;
+  return {
+    ...def,
+    ...partial,
+    posts: {
+      ...def.posts,
+      ...(partial.posts || {}),
+      emojiPattern: {
+        ...def.posts.emojiPattern,
+        ...((partial.posts as any)?.emojiPattern || {})
+      }
+    },
+    animations: {
+      ...def.animations,
+      ...(partial.animations || {})
+    }
+  };
+}
+
 export function generateEmojiPositions(
   count: number,
   containerWidth: number,

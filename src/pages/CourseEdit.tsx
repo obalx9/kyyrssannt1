@@ -9,7 +9,7 @@ import ThemeToggle from '../components/ThemeToggle';
 import FileUpload from '../components/FileUpload';
 import AdvancedThemeCustomizer from '../components/AdvancedThemeCustomizer';
 import ThemePreview from '../components/ThemePreview';
-import { themePresets, type ThemeConfig, getDefaultTheme } from '../utils/themePresets';
+import { themePresets, mergeThemeConfig, type ThemeConfig, getDefaultTheme } from '../utils/themePresets';
 
 interface Course {
   id: string;
@@ -120,7 +120,7 @@ export default function CourseEdit() {
       setWatermark(courseData.watermark || '');
 
       if (courseData.theme_config) {
-        setThemeConfig(courseData.theme_config);
+        setThemeConfig(mergeThemeConfig(courseData.theme_config));
       } else if (courseData.theme_preset) {
         const preset = themePresets.find(p => p.id === courseData.theme_preset);
         if (preset) {

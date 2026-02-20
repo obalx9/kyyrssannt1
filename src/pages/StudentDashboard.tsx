@@ -10,12 +10,10 @@ import ThemeToggle from '../components/ThemeToggle';
 
 interface EnrolledCourse {
   id: string;
-  course: {
-    id: string;
-    title: string;
-    description: string;
-    thumbnail_url: string | null;
-  };
+  title: string;
+  description: string;
+  thumbnail_url: string | null;
+  enrolled_at: string;
 }
 
 export default function StudentDashboard() {
@@ -137,17 +135,17 @@ export default function StudentDashboard() {
 
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {courses.filter((enrollment) => enrollment.course).map((enrollment) => (
+          {courses.map((course) => (
             <button
-              key={enrollment.id}
-              onClick={() => navigate(`/course/${enrollment.course.id}`)}
+              key={course.id}
+              onClick={() => navigate(`/course/${course.id}`)}
               className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden hover:border-teal-500 dark:hover:border-teal-400 hover:shadow-lg transition-all text-left group"
             >
-              {enrollment.course.thumbnail_url ? (
+              {course.thumbnail_url ? (
                 <div className="w-full h-48 overflow-hidden bg-gray-100 dark:bg-gray-700">
                   <img
-                    src={enrollment.course.thumbnail_url}
-                    alt={enrollment.course.title}
+                    src={course.thumbnail_url}
+                    alt={course.title}
                     className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
                   />
                 </div>
@@ -158,11 +156,11 @@ export default function StudentDashboard() {
               )}
               <div className="p-6">
                 <h3 className="text-lg font-bold text-gray-900 dark:text-gray-100 mb-2 line-clamp-2">
-                  {enrollment.course.title}
+                  {course.title}
                 </h3>
-                {enrollment.course.description && (
+                {course.description && (
                   <p className="text-sm text-gray-600 dark:text-gray-400 line-clamp-3">
-                    {enrollment.course.description}
+                    {course.description}
                   </p>
                 )}
               </div>

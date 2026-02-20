@@ -11,7 +11,7 @@ import ContentProtectionWarning from '../components/ContentProtectionWarning';
 import { useLanguage } from '../contexts/LanguageContext';
 import { useScrollPreferences } from '../contexts/ScrollPreferencesContext';
 import { useTheme } from '../contexts/ThemeContext';
-import { getThemePreset, getDefaultTheme, type ThemeConfig } from '../utils/themePresets';
+import { getThemePreset, getDefaultTheme, mergeThemeConfig, type ThemeConfig } from '../utils/themePresets';
 import { getBackgroundStyleProperty, getGlassEffect, getGlassEffectDark } from '../utils/postStyles';
 import {
   applyBasicProtection,
@@ -169,7 +169,7 @@ export default function CourseView() {
       if (!courseOwner) {
         try {
           const enrollments = await apiClient.getStudentEnrollments();
-          isStudent = Array.isArray(enrollments) && enrollments.some((e: any) => e.id === courseId);
+          isStudent = Array.isArray(enrollments) && enrollments.some((e: any) => e.id === courseId || e.course_id === courseId);
         } catch {
           isStudent = false;
         }
@@ -208,7 +208,7 @@ export default function CourseView() {
   }
 
   const themeConfig = course.theme_config
-    ? course.theme_config
+    ? mergeThemeConfig(course.theme_config)
     : (course.theme_preset ? getThemePreset(course.theme_preset)?.config : getDefaultTheme().config);
 
   const backgroundGradient = theme === 'dark'
