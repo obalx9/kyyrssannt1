@@ -438,8 +438,8 @@ export default function CourseFeed({
       const postsData = await apiClient.getCoursePosts(courseId, 200, 0);
 
       const postsWithMedia = (postsData || []).map((post: any) => {
-        if (post.media && post.media.length > 0) {
-          const mediaItems = post.media.map((m: any) => ({
+        if (post.media && post.media.length > 0 && post.media[0] !== null) {
+          const mediaItems = post.media.filter((m: any) => m !== null).map((m: any) => ({
             id: m.id,
             post_id: post.id,
             media_type: m.media_type,
@@ -453,7 +453,9 @@ export default function CourseFeed({
             height: m.height || null,
             order_index: m.display_order ?? m.order_index ?? 0,
           }));
-          return { ...post, media_items: mediaItems };
+          if (mediaItems.length > 0) {
+            return { ...post, media_items: mediaItems };
+          }
         }
 
         if ((post.storage_path || post.telegram_file_id) && !post.media_items) {

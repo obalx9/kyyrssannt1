@@ -918,22 +918,25 @@ app.get('/api/courses/:id/posts', authenticateToken, async (req, res) => {
 
     const result = await pool.query(
       `SELECT cp.*,
-              (SELECT json_agg(json_build_object(
-                'id', cpm.id,
-                'media_type', cpm.media_type,
-                'file_path', cpm.file_path,
-                'telegram_file_id', cpm.telegram_file_id,
-                'thumbnail_path', cpm.thumbnail_path,
-                'file_size', cpm.file_size,
-                'mime_type', cpm.mime_type,
-                'duration', cpm.duration,
-                'width', cpm.width,
-                'height', cpm.height,
-                'caption', cpm.caption,
-                'display_order', cpm.display_order
-              ) ORDER BY cpm.display_order)
-               FROM course_post_media cpm
-               WHERE cpm.post_id = cp.id) as media
+              COALESCE(
+                (SELECT json_agg(json_build_object(
+                  'id', cpm.id,
+                  'media_type', cpm.media_type,
+                  'file_path', cpm.file_path,
+                  'telegram_file_id', cpm.telegram_file_id,
+                  'thumbnail_path', cpm.thumbnail_path,
+                  'file_size', cpm.file_size,
+                  'mime_type', cpm.mime_type,
+                  'duration', cpm.duration,
+                  'width', cpm.width,
+                  'height', cpm.height,
+                  'caption', cpm.caption,
+                  'display_order', cpm.display_order
+                ) ORDER BY cpm.display_order)
+                 FROM course_post_media cpm
+                 WHERE cpm.post_id = cp.id),
+                '[]'::json
+              ) as media
        FROM course_posts cp
        WHERE cp.course_id = $1
        ORDER BY cp.created_at DESC
@@ -993,22 +996,25 @@ app.post('/api/courses/:id/posts', authenticateToken, async (req, res) => {
 
       const fullPostResult = await pool.query(
         `SELECT cp.*,
-                (SELECT json_agg(json_build_object(
-                  'id', cpm.id,
-                  'media_type', cpm.media_type,
-                  'file_path', cpm.file_path,
-                  'telegram_file_id', cpm.telegram_file_id,
-                  'thumbnail_path', cpm.thumbnail_path,
-                  'file_size', cpm.file_size,
-                  'mime_type', cpm.mime_type,
-                  'duration', cpm.duration,
-                  'width', cpm.width,
-                  'height', cpm.height,
-                  'caption', cpm.caption,
-                  'display_order', cpm.display_order
-                ) ORDER BY cpm.display_order)
-                 FROM course_post_media cpm
-                 WHERE cpm.post_id = cp.id) as media
+                COALESCE(
+                  (SELECT json_agg(json_build_object(
+                    'id', cpm.id,
+                    'media_type', cpm.media_type,
+                    'file_path', cpm.file_path,
+                    'telegram_file_id', cpm.telegram_file_id,
+                    'thumbnail_path', cpm.thumbnail_path,
+                    'file_size', cpm.file_size,
+                    'mime_type', cpm.mime_type,
+                    'duration', cpm.duration,
+                    'width', cpm.width,
+                    'height', cpm.height,
+                    'caption', cpm.caption,
+                    'display_order', cpm.display_order
+                  ) ORDER BY cpm.display_order)
+                   FROM course_post_media cpm
+                   WHERE cpm.post_id = cp.id),
+                  '[]'::json
+                ) as media
          FROM course_posts cp
          WHERE cp.id = $1`,
         [post.id]
