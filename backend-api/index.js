@@ -918,25 +918,22 @@ app.get('/api/courses/:id/posts', authenticateToken, async (req, res) => {
 
     const result = await pool.query(
       `SELECT cp.*,
-              COALESCE(
-                (SELECT json_agg(json_build_object(
-                  'id', cpm.id,
-                  'media_type', cpm.media_type,
-                  'file_path', cpm.file_path,
-                  'telegram_file_id', cpm.telegram_file_id,
-                  'thumbnail_path', cpm.thumbnail_path,
-                  'file_size', cpm.file_size,
-                  'mime_type', cpm.mime_type,
-                  'duration', cpm.duration,
-                  'width', cpm.width,
-                  'height', cpm.height,
-                  'caption', cpm.caption,
-                  'display_order', cpm.display_order
-                ) ORDER BY cpm.display_order)
-                 FROM course_post_media cpm
-                 WHERE cpm.post_id = cp.id),
-                '[]'::json
-              ) as media
+              (SELECT json_agg(json_build_object(
+                'id', cpm.id,
+                'media_type', cpm.media_type,
+                'file_path', cpm.file_path,
+                'telegram_file_id', cpm.telegram_file_id,
+                'thumbnail_path', cpm.thumbnail_path,
+                'file_size', cpm.file_size,
+                'mime_type', cpm.mime_type,
+                'duration', cpm.duration,
+                'width', cpm.width,
+                'height', cpm.height,
+                'caption', cpm.caption,
+                'display_order', cpm.display_order
+              ) ORDER BY cpm.display_order)
+               FROM course_post_media cpm
+               WHERE cpm.post_id = cp.id) as media
        FROM course_posts cp
        WHERE cp.course_id = $1
        ORDER BY cp.created_at DESC
@@ -996,25 +993,22 @@ app.post('/api/courses/:id/posts', authenticateToken, async (req, res) => {
 
       const fullPostResult = await pool.query(
         `SELECT cp.*,
-                COALESCE(
-                  (SELECT json_agg(json_build_object(
-                    'id', cpm.id,
-                    'media_type', cpm.media_type,
-                    'file_path', cpm.file_path,
-                    'telegram_file_id', cpm.telegram_file_id,
-                    'thumbnail_path', cpm.thumbnail_path,
-                    'file_size', cpm.file_size,
-                    'mime_type', cpm.mime_type,
-                    'duration', cpm.duration,
-                    'width', cpm.width,
-                    'height', cpm.height,
-                    'caption', cpm.caption,
-                    'display_order', cpm.display_order
-                  ) ORDER BY cpm.display_order)
-                   FROM course_post_media cpm
-                   WHERE cpm.post_id = cp.id),
-                  '[]'::json
-                ) as media
+                (SELECT json_agg(json_build_object(
+                  'id', cpm.id,
+                  'media_type', cpm.media_type,
+                  'file_path', cpm.file_path,
+                  'telegram_file_id', cpm.telegram_file_id,
+                  'thumbnail_path', cpm.thumbnail_path,
+                  'file_size', cpm.file_size,
+                  'mime_type', cpm.mime_type,
+                  'duration', cpm.duration,
+                  'width', cpm.width,
+                  'height', cpm.height,
+                  'caption', cpm.caption,
+                  'display_order', cpm.display_order
+                ) ORDER BY cpm.display_order)
+                 FROM course_post_media cpm
+                 WHERE cpm.post_id = cp.id) as media
          FROM course_posts cp
          WHERE cp.id = $1`,
         [post.id]
@@ -1557,10 +1551,10 @@ app.post('/api/courses/:courseId/telegram-bot', authenticateToken, async (req, r
     if (existing.rows.length > 0) {
       result = await pool.query(
         `UPDATE telegram_bots
-         SET bot_token = $1, bot_username = $2, is_active = $3, webhook_secret = $4, channel_id = $5
-         WHERE course_id = $6
+         SET bot_token = $1, bot_username = $2, is_active = $3, webhook_secret = $4, channel_id = $6
+         WHERE course_id = $5
          RETURNING id, bot_token, bot_username, webhook_secret, is_active, channel_id, created_at`,
-        [bot_token, bot_username, is_active, webhookSecret, channel_id || null, courseId]
+        [bot_token, bot_username, is_active, webhookSecret, courseId, channel_id || null]
       );
     } else {
       result = await pool.query(
@@ -1603,10 +1597,10 @@ app.put('/api/courses/:courseId/telegram-bot', authenticateToken, async (req, re
     const result = await pool.query(
       `UPDATE telegram_bots
        SET bot_token = $1, bot_username = $2, is_active = $3,
-           webhook_secret = $4, channel_id = $5
-       WHERE course_id = $6
+           webhook_secret = $5, channel_id = $6
+       WHERE course_id = $4
        RETURNING id, bot_token, bot_username, webhook_secret, is_active, channel_id, created_at`,
-      [bot_token, bot_username, is_active, newSecret, channel_id || null, courseId]
+      [bot_token, bot_username, is_active, courseId, newSecret, channel_id || null]
     );
 
     if (result.rows.length === 0) {
@@ -1731,7 +1725,6 @@ app.post('/api/telegram/webhook/:secret', async (req, res) => {
     }
 
     const bot = botResult.rows[0];
-    console.log('[Webhook] Bot loaded from DB:', { bot_username: bot.bot_username, channel_id: bot.channel_id, channel_id_type: typeof bot.channel_id });
 
     async function tgSend(method, body) {
       return fetch(`https://api.telegram.org/bot${bot.bot_token}/${method}`, {
@@ -1979,173 +1972,6 @@ app.post('/api/telegram/webhook/:secret', async (req, res) => {
       if (activeSession.rows.length > 0) {
         const session = activeSession.rows[0];
         const textContent = message.text || message.caption || '';
-        const fwdMediaGroupId = message.media_group_id;
-        const client = await pool.connect();
-
-        try {
-          if (fwdMediaGroupId) {
-            await client.query('BEGIN');
-            await client.query(
-              `INSERT INTO telegram_media_group_buffer
-               (course_id, media_group_id, telegram_message_id, media_data, caption, message_date)
-               VALUES ($1, $2, $3, $4, $5, $6)`,
-              [
-                session.course_id,
-                fwdMediaGroupId,
-                message.message_id,
-                JSON.stringify(message),
-                textContent || null,
-                new Date(message.date * 1000)
-              ]
-            );
-
-            const bufferCheck = await client.query(
-              `SELECT COUNT(*) as count, MAX(received_at) as last_received FROM telegram_media_group_buffer
-               WHERE course_id = $1 AND media_group_id = $2`,
-              [session.course_id, fwdMediaGroupId]
-            );
-
-            const bufferCount = parseInt(bufferCheck.rows[0].count);
-            const lastReceived = bufferCheck.rows[0].last_received ? new Date(bufferCheck.rows[0].last_received) : null;
-            const timeSinceLastReceived = lastReceived ? Date.now() - lastReceived.getTime() : 0;
-
-            if (bufferCount === 1 && timeSinceLastReceived < 3000) {
-              await client.query('COMMIT');
-              client.release();
-              console.log('[Webhook] Buffered import media group item, waiting for more... (received', bufferCount, 'items,', timeSinceLastReceived, 'ms ago)');
-              return res.json({ ok: true });
-            }
-
-            const bufferedMessages = await client.query(
-              `SELECT * FROM telegram_media_group_buffer
-               WHERE course_id = $1 AND media_group_id = $2
-               ORDER BY telegram_message_id`,
-              [session.course_id, fwdMediaGroupId]
-            );
-
-            const firstMessage = JSON.parse(bufferedMessages.rows[0].media_data);
-            const caption = bufferedMessages.rows[0].caption || '';
-
-            const postResult = await client.query(
-              `INSERT INTO course_posts
-               (course_id, source_type, title, text_content, media_type, telegram_message_id, media_group_id, media_count, published_at)
-               VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-               RETURNING id`,
-              [
-                session.course_id,
-                'telegram',
-                '',
-                caption,
-                'media_group',
-                firstMessage.forward_from_message_id || firstMessage.message_id,
-                fwdMediaGroupId,
-                bufferedMessages.rows.length,
-                new Date(firstMessage.date * 1000)
-              ]
-            );
-
-            const postId = postResult.rows[0].id;
-            const MAX_FILE_SIZE = 20 * 1024 * 1024;
-            let groupHasError = false;
-
-            for (let i = 0; i < bufferedMessages.rows.length; i++) {
-              const buffered = JSON.parse(bufferedMessages.rows[i].media_data);
-              let mediaType = null;
-              let fileId = null;
-              let thumbnailFileId = null;
-              let width = null;
-              let height = null;
-              let duration = null;
-              let fileSize = null;
-              let fileName = null;
-              let mimeType = null;
-
-              if (buffered.photo) {
-                mediaType = 'photo';
-                const photo = buffered.photo[buffered.photo.length - 1];
-                fileId = photo.file_id;
-                width = photo.width;
-                height = photo.height;
-                fileSize = photo.file_size;
-              } else if (buffered.video) {
-                mediaType = 'video';
-                fileId = buffered.video.file_id;
-                thumbnailFileId = buffered.video.thumbnail?.file_id;
-                width = buffered.video.width;
-                height = buffered.video.height;
-                duration = buffered.video.duration;
-                fileSize = buffered.video.file_size;
-                mimeType = buffered.video.mime_type;
-                fileName = buffered.video.file_name;
-              } else if (buffered.document) {
-                mediaType = 'document';
-                fileId = buffered.document.file_id;
-                thumbnailFileId = buffered.document.thumbnail?.file_id;
-                fileSize = buffered.document.file_size;
-                mimeType = buffered.document.mime_type;
-                fileName = buffered.document.file_name;
-              } else if (buffered.audio) {
-                mediaType = 'audio';
-                fileId = buffered.audio.file_id;
-                duration = buffered.audio.duration;
-                fileSize = buffered.audio.file_size;
-                mimeType = buffered.audio.mime_type;
-                fileName = buffered.audio.file_name;
-              } else if (buffered.voice) {
-                mediaType = 'voice';
-                fileId = buffered.voice.file_id;
-                duration = buffered.voice.duration;
-                fileSize = buffered.voice.file_size;
-                mimeType = buffered.voice.mime_type;
-              } else if (buffered.animation) {
-                mediaType = 'animation';
-                fileId = buffered.animation.file_id;
-                thumbnailFileId = buffered.animation.thumbnail?.file_id;
-                width = buffered.animation.width;
-                height = buffered.animation.height;
-                duration = buffered.animation.duration;
-                fileSize = buffered.animation.file_size;
-                mimeType = buffered.animation.mime_type;
-                fileName = buffered.animation.file_name;
-              }
-
-              const itemHasError = fileId !== null && fileSize !== null && fileSize > MAX_FILE_SIZE;
-              if (itemHasError) {
-                groupHasError = true;
-              }
-
-              if (mediaType && fileId && !itemHasError) {
-                await client.query(
-                  `INSERT INTO course_post_media
-                   (post_id, media_type, telegram_file_id, telegram_thumbnail_file_id,
-                    file_name, file_size, mime_type, width, height, duration, order_index)
-                   VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
-                  [postId, mediaType, fileId, thumbnailFileId, fileName, fileSize, mimeType, width, height, duration, i]
-                );
-              }
-            }
-
-            await client.query(
-              'DELETE FROM telegram_media_group_buffer WHERE course_id = $1 AND media_group_id = $2',
-              [session.course_id, fwdMediaGroupId]
-            );
-
-            await client.query(
-              `UPDATE telegram_import_sessions SET imported_messages = imported_messages + $1 WHERE id = $2`,
-              [bufferedMessages.rows.length, session.id]
-            );
-
-            await client.query('COMMIT');
-            client.release();
-            console.log('[Webhook] Imported media group (', bufferedMessages.rows.length, 'items) as post:', postId);
-            return res.json({ ok: true });
-          }
-        } catch (err) {
-          await client.query('ROLLBACK');
-          client.release();
-          console.error('[Webhook] Error processing import media group:', err);
-          return res.json({ ok: true });
-        }
 
         let fwdMediaType = 'text';
         let fwdFileId = null;
@@ -2212,6 +2038,7 @@ app.post('/api/telegram/webhook/:secret', async (req, res) => {
           ? 'Telegram может передавать файлы только до 20 МБ. Пожалуйста, загрузите видео или изображение вручную через форму редактирования ниже.'
           : null;
 
+        const client = await pool.connect();
         try {
           await client.query('BEGIN');
 
@@ -2262,12 +2089,8 @@ app.post('/api/telegram/webhook/:secret', async (req, res) => {
       return res.json({ ok: true });
     }
 
-    const messageChannelId = parseInt(message.chat?.id);
-    const botChannelId = parseInt(bot.channel_id);
-    console.log('[Webhook] Checking channel match:', { messageChannelId, botChannelId, messageType: typeof messageChannelId, botType: typeof botChannelId });
-
-    if (!message.chat || messageChannelId !== botChannelId) {
-      console.log('[Webhook] Message not from configured channel - Mismatch detected:', { messageChannelId, botChannelId, match: messageChannelId === botChannelId });
+    if (!message.chat || message.chat.id.toString() !== bot.channel_id.toString()) {
+      console.log('[Webhook] Message not from configured channel:', message.chat?.id, 'expected:', bot.channel_id);
       return res.json({ ok: true });
     }
 
@@ -2300,18 +2123,14 @@ app.post('/api/telegram/webhook/:secret', async (req, res) => {
         );
 
         const bufferCheck = await client.query(
-          `SELECT COUNT(*) as count, MAX(received_at) as last_received FROM telegram_media_group_buffer
-           WHERE course_id = $1 AND media_group_id = $2`,
+          `SELECT COUNT(*) as count FROM telegram_media_group_buffer
+           WHERE course_id = $1 AND media_group_id = $2 AND received_at > NOW() - INTERVAL '3 seconds'`,
           [channelCourseId, mediaGroupId]
         );
 
-        const bufferCount = parseInt(bufferCheck.rows[0].count);
-        const lastReceived = bufferCheck.rows[0].last_received ? new Date(bufferCheck.rows[0].last_received) : null;
-        const timeSinceLastReceived = lastReceived ? Date.now() - lastReceived.getTime() : 0;
-
-        if (bufferCount === 1 && timeSinceLastReceived < 3000) {
+        if (parseInt(bufferCheck.rows[0].count) < 2) {
           await client.query('COMMIT');
-          console.log('[Webhook] Buffered media group item, waiting for more... (received', bufferCount, 'items,', timeSinceLastReceived, 'ms ago)');
+          console.log('[Webhook] Buffered media group item, waiting for more...');
           return res.json({ ok: true });
         }
 
