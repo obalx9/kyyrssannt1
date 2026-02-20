@@ -796,6 +796,31 @@ app.get('/api/courses/:id', authenticateToken, async (req, res) => {
   }
 });
 
+app.delete('/api/enrollments/by-enrollment-id/:enrollmentId', authenticateToken, async (req, res) => {
+  try {
+    const { enrollmentId } = req.params;
+
+    const enrollmentResult = await pool.query(
+      `SELECT ce.id, ce.course_id FROM course_enrollments ce
+       JOIN courses c ON ce.course_id = c.id
+       JOIN sellers s ON c.seller_id = s.id
+       WHERE ce.id = $1 AND s.user_id = $2`,
+      [enrollmentId, req.user.userId]
+    );
+
+    if (enrollmentResult.rows.length === 0) {
+      return res.status(403).json({ error: 'Not authorized or not found' });
+    }
+
+    await pool.query('DELETE FROM course_enrollments WHERE id = $1', [enrollmentId]);
+
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Error removing enrollment:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 app.post('/api/courses', authenticateToken, async (req, res) => {
   try {
     const { title, description, price, is_published, telegram_group_id, theme_config, watermark_text } = req.body;
@@ -2460,31 +2485,6 @@ app.delete('/api/courses/:id/pending-enrollments/:enrollmentId', authenticateTok
     res.json({ success: true });
   } catch (error) {
     console.error('Error deleting pending enrollment:', error);
-    res.status(500).json({ error: 'Internal server error' });
-  }
-});
-
-app.delete('/api/enrollments/by-enrollment-id/:enrollmentId', authenticateToken, async (req, res) => {
-  try {
-    const { enrollmentId } = req.params;
-
-    const enrollmentResult = await pool.query(
-      `SELECT ce.id, ce.course_id FROM course_enrollments ce
-       JOIN courses c ON ce.course_id = c.id
-       JOIN sellers s ON c.seller_id = s.id
-       WHERE ce.id = $1 AND s.user_id = $2`,
-      [enrollmentId, req.user.userId]
-    );
-
-    if (enrollmentResult.rows.length === 0) {
-      return res.status(403).json({ error: 'Not authorized or not found' });
-    }
-
-    await pool.query('DELETE FROM course_enrollments WHERE id = $1', [enrollmentId]);
-
-    res.json({ success: true });
-  } catch (error) {
-    console.error('Error removing enrollment:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
