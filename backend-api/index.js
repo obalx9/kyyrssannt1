@@ -1557,10 +1557,10 @@ app.post('/api/courses/:courseId/telegram-bot', authenticateToken, async (req, r
     if (existing.rows.length > 0) {
       result = await pool.query(
         `UPDATE telegram_bots
-         SET bot_token = $1, bot_username = $2, is_active = $3, webhook_secret = $4, channel_id = $6
-         WHERE course_id = $5
+         SET bot_token = $1, bot_username = $2, is_active = $3, webhook_secret = $4, channel_id = $5
+         WHERE course_id = $6
          RETURNING id, bot_token, bot_username, webhook_secret, is_active, channel_id, created_at`,
-        [bot_token, bot_username, is_active, webhookSecret, courseId, channel_id || null]
+        [bot_token, bot_username, is_active, webhookSecret, channel_id || null, courseId]
       );
     } else {
       result = await pool.query(
@@ -1603,10 +1603,10 @@ app.put('/api/courses/:courseId/telegram-bot', authenticateToken, async (req, re
     const result = await pool.query(
       `UPDATE telegram_bots
        SET bot_token = $1, bot_username = $2, is_active = $3,
-           webhook_secret = $5, channel_id = $6
-       WHERE course_id = $4
+           webhook_secret = $4, channel_id = $5
+       WHERE course_id = $6
        RETURNING id, bot_token, bot_username, webhook_secret, is_active, channel_id, created_at`,
-      [bot_token, bot_username, is_active, courseId, newSecret, channel_id || null]
+      [bot_token, bot_username, is_active, newSecret, channel_id || null, courseId]
     );
 
     if (result.rows.length === 0) {
@@ -1731,6 +1731,7 @@ app.post('/api/telegram/webhook/:secret', async (req, res) => {
     }
 
     const bot = botResult.rows[0];
+    console.log('[Webhook] Bot loaded from DB:', { bot_username: bot.bot_username, channel_id: bot.channel_id, channel_id_type: typeof bot.channel_id });
 
     async function tgSend(method, body) {
       return fetch(`https://api.telegram.org/bot${bot.bot_token}/${method}`, {
@@ -2261,8 +2262,12 @@ app.post('/api/telegram/webhook/:secret', async (req, res) => {
       return res.json({ ok: true });
     }
 
-    if (!message.chat || message.chat.id.toString() !== bot.channel_id.toString()) {
-      console.log('[Webhook] Message not from configured channel:', message.chat?.id, 'expected:', bot.channel_id);
+    const messageChannelId = parseInt(message.chat?.id);
+    const botChannelId = parseInt(bot.channel_id);
+    console.log('[Webhook] Checking channel match:', { messageChannelId, botChannelId, messageType: typeof messageChannelId, botType: typeof botChannelId });
+
+    if (!message.chat || messageChannelId !== botChannelId) {
+      console.log('[Webhook] Message not from configured channel - Mismatch detected:', { messageChannelId, botChannelId, match: messageChannelId === botChannelId });
       return res.json({ ok: true });
     }
 
