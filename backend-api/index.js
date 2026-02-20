@@ -2205,13 +2205,16 @@ app.post('/api/telegram/webhook/:secret', async (req, res) => {
 
         const bufferCheck = await client.query(
           `SELECT COUNT(*) as count FROM telegram_media_group_buffer
-           WHERE course_id = $1 AND media_group_id = $2 AND received_at > NOW() - INTERVAL '3 seconds'`,
+           WHERE course_id = $1 AND media_group_id = $2`,
           [channelCourseId, mediaGroupId]
         );
 
-        if (parseInt(bufferCheck.rows[0].count) < 2) {
+        const isFirstMessage = parseInt(bufferCheck.rows[0].count) === 1;
+
+        if (isFirstMessage) {
           await client.query('COMMIT');
-          console.log('[Webhook] Buffered media group item, waiting for more...');
+          await new Promise(resolve => setTimeout(resolve, 2000));
+          console.log('[Webhook] First media group item buffered, waiting for others...');
           return res.json({ ok: true });
         }
 
