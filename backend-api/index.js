@@ -1800,14 +1800,101 @@ app.post('/api/telegram/webhook/:secret', async (req, res) => {
       if (activeSession.rows.length > 0) {
         const session = activeSession.rows[0];
         const textContent = message.text || message.caption || '';
+
+        let fwdMediaType = 'text';
+        let fwdFileId = null;
+        let fwdThumbnailFileId = null;
+        let fwdWidth = null;
+        let fwdHeight = null;
+        let fwdDuration = null;
+        let fwdFileSize = null;
+        let fwdFileName = null;
+        let fwdMimeType = null;
+
+        if (message.photo) {
+          fwdMediaType = 'photo';
+          const photo = message.photo[message.photo.length - 1];
+          fwdFileId = photo.file_id;
+          fwdWidth = photo.width;
+          fwdHeight = photo.height;
+          fwdFileSize = photo.file_size;
+        } else if (message.video) {
+          fwdMediaType = 'video';
+          fwdFileId = message.video.file_id;
+          fwdThumbnailFileId = message.video.thumbnail?.file_id;
+          fwdWidth = message.video.width;
+          fwdHeight = message.video.height;
+          fwdDuration = message.video.duration;
+          fwdFileSize = message.video.file_size;
+          fwdMimeType = message.video.mime_type;
+          fwdFileName = message.video.file_name;
+        } else if (message.document) {
+          fwdMediaType = 'document';
+          fwdFileId = message.document.file_id;
+          fwdThumbnailFileId = message.document.thumbnail?.file_id;
+          fwdFileSize = message.document.file_size;
+          fwdMimeType = message.document.mime_type;
+          fwdFileName = message.document.file_name;
+        } else if (message.audio) {
+          fwdMediaType = 'audio';
+          fwdFileId = message.audio.file_id;
+          fwdDuration = message.audio.duration;
+          fwdFileSize = message.audio.file_size;
+          fwdMimeType = message.audio.mime_type;
+          fwdFileName = message.audio.file_name;
+        } else if (message.voice) {
+          fwdMediaType = 'voice';
+          fwdFileId = message.voice.file_id;
+          fwdDuration = message.voice.duration;
+          fwdFileSize = message.voice.file_size;
+          fwdMimeType = message.voice.mime_type;
+        } else if (message.animation) {
+          fwdMediaType = 'animation';
+          fwdFileId = message.animation.file_id;
+          fwdThumbnailFileId = message.animation.thumbnail?.file_id;
+          fwdWidth = message.animation.width;
+          fwdHeight = message.animation.height;
+          fwdDuration = message.animation.duration;
+          fwdFileSize = message.animation.file_size;
+          fwdMimeType = message.animation.mime_type;
+          fwdFileName = message.animation.file_name;
+        }
+
+        const FWD_MAX_FILE_SIZE = 20 * 1024 * 1024;
+        const fwdHasError = fwdFileId !== null && fwdFileSize !== null && fwdFileSize > FWD_MAX_FILE_SIZE;
+        const fwdErrorMessage = fwdHasError
+          ? 'Telegram может передавать файлы только до 20 МБ. Пожалуйста, загрузите видео или изображение вручную через форму редактирования ниже.'
+          : null;
+
         const client = await pool.connect();
         try {
           await client.query('BEGIN');
 
           const postResult = await client.query(
-            `INSERT INTO course_posts (course_id, source_type, text_content, telegram_message_id, published_at)
-             VALUES ($1, 'telegram', $2, $3, $4) RETURNING id`,
-            [session.course_id, textContent, message.forward_from_message_id || message.message_id, new Date(message.date * 1000)]
+            `INSERT INTO course_posts
+             (course_id, source_type, text_content, media_type, telegram_file_id,
+              telegram_thumbnail_file_id, telegram_message_id, file_name, file_size, mime_type,
+              telegram_media_width, telegram_media_height, telegram_media_duration,
+              published_at, has_error, error_message)
+             VALUES ($1, 'telegram', $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
+             RETURNING id`,
+            [
+              session.course_id,
+              textContent,
+              fwdMediaType,
+              fwdHasError ? null : fwdFileId,
+              fwdHasError ? null : fwdThumbnailFileId,
+              message.forward_from_message_id || message.message_id,
+              fwdFileName,
+              fwdFileSize,
+              fwdMimeType,
+              fwdWidth,
+              fwdHeight,
+              fwdDuration,
+              new Date(message.date * 1000),
+              fwdHasError,
+              fwdErrorMessage
+            ]
           );
 
           await client.query(
@@ -1816,7 +1903,7 @@ app.post('/api/telegram/webhook/:secret', async (req, res) => {
           );
 
           await client.query('COMMIT');
-          console.log('[Webhook] Imported forwarded message as post:', postResult.rows[0].id);
+          console.log('[Webhook] Imported forwarded message as post:', postResult.rows[0].id, fwdHasError ? '(has_error: file > 20MB)' : '');
         } catch (err) {
           await client.query('ROLLBACK');
           console.error('[Webhook] Error saving forwarded message:', err);
@@ -1895,6 +1982,9 @@ app.post('/api/telegram/webhook/:secret', async (req, res) => {
 
         const postId = postResult.rows[0].id;
 
+        const MAX_FILE_SIZE = 20 * 1024 * 1024;
+        let groupHasError = false;
+
         for (let i = 0; i < bufferedMessages.rows.length; i++) {
           const buffered = JSON.parse(bufferedMessages.rows[i].media_data);
           let mediaType = null;
@@ -1933,7 +2023,10 @@ app.post('/api/telegram/webhook/:secret', async (req, res) => {
             fileName = buffered.document.file_name;
           }
 
-          if (mediaType && fileId) {
+          const itemHasError = fileId !== null && fileSize !== null && fileSize > MAX_FILE_SIZE;
+          if (itemHasError) groupHasError = true;
+
+          if (mediaType && fileId && !itemHasError) {
             await client.query(
               `INSERT INTO course_post_media
                (post_id, media_type, telegram_file_id, telegram_thumbnail_file_id,
@@ -1942,6 +2035,17 @@ app.post('/api/telegram/webhook/:secret', async (req, res) => {
               [postId, mediaType, fileId, thumbnailFileId, fileName, fileSize, mimeType, width, height, duration, i]
             );
           }
+        }
+
+        if (groupHasError) {
+          await client.query(
+            `UPDATE course_posts SET has_error = true, error_message = $1 WHERE id = $2`,
+            [
+              'Telegram может передавать файлы только до 20 МБ. Один или несколько файлов группы превышают лимит. Пожалуйста, загрузите их вручную через форму редактирования ниже.',
+              postId
+            ]
+          );
+          console.log('[Webhook] Media group post has oversized files, marked has_error:', postId);
         }
 
         await client.query(
@@ -2011,12 +2115,19 @@ app.post('/api/telegram/webhook/:secret', async (req, res) => {
           fileName = message.animation.file_name;
         }
 
+        const MAX_FILE_SIZE = 20 * 1024 * 1024;
+        const singleHasError = fileId !== null && fileSize !== null && fileSize > MAX_FILE_SIZE;
+        const singleErrorMessage = singleHasError
+          ? 'Telegram может передавать файлы только до 20 МБ. Пожалуйста, загрузите видео или изображение вручную через форму редактирования ниже.'
+          : null;
+
         const postResult = await client.query(
           `INSERT INTO course_posts
            (course_id, source_type, title, text_content, media_type, telegram_file_id,
             telegram_thumbnail_file_id, telegram_message_id, file_name, file_size, mime_type,
-            telegram_media_width, telegram_media_height, telegram_media_duration, published_at)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
+            telegram_media_width, telegram_media_height, telegram_media_duration, published_at,
+            has_error, error_message)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
            RETURNING id`,
           [
             courseId,
@@ -2024,8 +2135,8 @@ app.post('/api/telegram/webhook/:secret', async (req, res) => {
             '',
             textContent,
             mediaType,
-            fileId,
-            thumbnailFileId,
+            singleHasError ? null : fileId,
+            singleHasError ? null : thumbnailFileId,
             message.message_id,
             fileName,
             fileSize,
@@ -2033,11 +2144,13 @@ app.post('/api/telegram/webhook/:secret', async (req, res) => {
             width,
             height,
             duration,
-            new Date(message.date * 1000)
+            new Date(message.date * 1000),
+            singleHasError,
+            singleErrorMessage
           ]
         );
 
-        console.log('[Webhook] Created single post:', postResult.rows[0].id);
+        console.log('[Webhook] Created single post:', postResult.rows[0].id, singleHasError ? '(has_error: file > 20MB)' : '');
       }
 
       await client.query(
