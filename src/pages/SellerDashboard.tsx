@@ -17,7 +17,7 @@ interface Course {
   is_published: boolean;
   created_at: string;
   thumbnail_url: string | null;
-  enrollments?: { count: number }[];
+  enrollment_count?: number | string;
 }
 
 interface Seller {
@@ -257,7 +257,7 @@ export default function SellerDashboard() {
                             </span>
                             <span className="text-xs text-gray-500 dark:text-gray-400 flex items-center gap-1">
                               <Users className="w-3 h-3" />
-                              {course.enrollments?.[0]?.count || 0}
+                              {Number(course.enrollment_count) || 0}
                             </span>
                           </div>
                         </div>
@@ -376,7 +376,7 @@ export default function SellerDashboard() {
                         <div className="flex items-center gap-4 text-sm text-gray-500 dark:text-gray-400">
                           <div className="flex items-center gap-1">
                             <Users className="w-4 h-4" />
-                            <span>{course.enrollments?.[0]?.count || 0} {t('studentsCount')}</span>
+                            <span>{Number(course.enrollment_count) || 0} {t('studentsCount')}</span>
                           </div>
                         </div>
                       </div>
