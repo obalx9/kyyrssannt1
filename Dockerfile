@@ -5,12 +5,14 @@ WORKDIR /app
 COPY package*.json ./
 COPY backend-api/package*.json ./backend-api/
 
-RUN npm ci --omit=dev
+RUN npm ci
 RUN cd backend-api && npm ci --omit=dev
 
 COPY . .
 
 RUN npm run build
+
+RUN npm prune --omit=dev
 
 ENV NODE_ENV=production
 ENV PORT=3000
