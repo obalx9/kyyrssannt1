@@ -2838,7 +2838,7 @@ if (process.env.NODE_ENV === 'production') {
   app.use(express.static(buildPath));
 
   app.get('*', (req, res, next) => {
-    if (req.path.startsWith('/api/')) {
+    if (req.path.startsWith('/api/') || req.path.startsWith('/uploads')) {
       return next();
     }
     res.sendFile(join(buildPath, 'index.html'));
