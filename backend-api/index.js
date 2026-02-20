@@ -1534,11 +1534,13 @@ app.post('/api/courses/:courseId/telegram-bot', authenticateToken, async (req, r
       return res.status(403).json({ error: 'Not authorized' });
     }
 
+    const webhookSecret = crypto.randomBytes(32).toString('hex');
+
     const result = await pool.query(
-      `INSERT INTO telegram_bots (course_id, seller_id, bot_token, bot_username, is_active)
-       VALUES ($1, $2, $3, $4, $5)
+      `INSERT INTO telegram_bots (course_id, seller_id, bot_token, bot_username, is_active, webhook_secret)
+       VALUES ($1, $2, $3, $4, $5, $6)
        RETURNING id, bot_token, bot_username, webhook_secret, is_active, created_at`,
-      [courseId, sellerCheck.rows[0].id, bot_token, bot_username, is_active]
+      [courseId, sellerCheck.rows[0].id, bot_token, bot_username, is_active, webhookSecret]
     );
 
     res.json(result.rows[0]);
@@ -1566,10 +1568,11 @@ app.put('/api/courses/:courseId/telegram-bot', authenticateToken, async (req, re
 
     const result = await pool.query(
       `UPDATE telegram_bots
-       SET bot_token = $1, bot_username = $2, is_active = $3
+       SET bot_token = $1, bot_username = $2, is_active = $3,
+           webhook_secret = COALESCE(webhook_secret, $5)
        WHERE course_id = $4
        RETURNING id, bot_token, bot_username, webhook_secret, is_active, created_at`,
-      [bot_token, bot_username, is_active, courseId]
+      [bot_token, bot_username, is_active, courseId, crypto.randomBytes(32).toString('hex')]
     );
 
     if (result.rows.length === 0) {

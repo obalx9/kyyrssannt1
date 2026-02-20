@@ -51,9 +51,11 @@ export default function TelegramBotConfig({ courseId, onClose }: TelegramBotConf
       if (data) {
         setBot(data);
         setBotToken(data.bot_token);
-        setWebhookSecret(data.webhook_secret);
-        const apiUrl = import.meta.env.VITE_API_URL || window.location.origin;
-        setWebhookUrl(`${apiUrl}/api/telegram/webhook/${data.webhook_secret}`);
+        if (data.webhook_secret) {
+          setWebhookSecret(data.webhook_secret);
+          const apiUrl = import.meta.env.VITE_API_URL || window.location.origin;
+          setWebhookUrl(`${apiUrl}/api/telegram/webhook/${data.webhook_secret}`);
+        }
       }
     } catch (err: any) {
       console.error('Error loading bot:', err);
@@ -106,6 +108,11 @@ export default function TelegramBotConfig({ courseId, onClose }: TelegramBotConf
       }
 
       const savedBot = await saveResponse.json();
+
+      if (!savedBot.webhook_secret) {
+        throw new Error('Server did not return webhook_secret. Please try again.');
+      }
+
       const apiUrl = import.meta.env.VITE_API_URL || window.location.origin;
       const newWebhookUrl = `${apiUrl}/api/telegram/webhook/${savedBot.webhook_secret}`;
 
