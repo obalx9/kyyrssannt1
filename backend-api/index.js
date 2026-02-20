@@ -1537,6 +1537,11 @@ app.post('/api/courses/:courseId/telegram-bot', authenticateToken, async (req, r
 
     const webhookSecret = crypto.randomBytes(32).toString('hex');
 
+    await pool.query(
+      'DELETE FROM telegram_bots WHERE bot_token = $1 AND (course_id IS NULL OR course_id != $2)',
+      [bot_token, courseId]
+    );
+
     const existing = await pool.query(
       'SELECT id FROM telegram_bots WHERE course_id = $1',
       [courseId]
@@ -1583,13 +1588,19 @@ app.put('/api/courses/:courseId/telegram-bot', authenticateToken, async (req, re
       return res.status(403).json({ error: 'Not authorized' });
     }
 
+    await pool.query(
+      'DELETE FROM telegram_bots WHERE bot_token = $1 AND (course_id IS NULL OR course_id != $2)',
+      [bot_token, courseId]
+    );
+
+    const newSecret = crypto.randomBytes(32).toString('hex');
     const result = await pool.query(
       `UPDATE telegram_bots
        SET bot_token = $1, bot_username = $2, is_active = $3,
-           webhook_secret = COALESCE(webhook_secret, $5)
+           webhook_secret = $5
        WHERE course_id = $4
        RETURNING id, bot_token, bot_username, webhook_secret, is_active, created_at`,
-      [bot_token, bot_username, is_active, courseId, crypto.randomBytes(32).toString('hex')]
+      [bot_token, bot_username, is_active, courseId, newSecret]
     );
 
     if (result.rows.length === 0) {
