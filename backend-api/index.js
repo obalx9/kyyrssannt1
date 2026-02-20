@@ -1503,6 +1503,7 @@ app.get('/api/courses/:courseId/telegram-bot', authenticateToken, async (req, re
       `SELECT id, bot_token, bot_username, webhook_secret, is_active, created_at
        FROM telegram_bots
        WHERE course_id = $1
+       ORDER BY is_active DESC, created_at DESC
        LIMIT 1`,
       [courseId]
     );
@@ -1536,12 +1537,28 @@ app.post('/api/courses/:courseId/telegram-bot', authenticateToken, async (req, r
 
     const webhookSecret = crypto.randomBytes(32).toString('hex');
 
-    const result = await pool.query(
-      `INSERT INTO telegram_bots (course_id, seller_id, bot_token, bot_username, is_active, webhook_secret)
-       VALUES ($1, $2, $3, $4, $5, $6)
-       RETURNING id, bot_token, bot_username, webhook_secret, is_active, created_at`,
-      [courseId, sellerCheck.rows[0].id, bot_token, bot_username, is_active, webhookSecret]
+    const existing = await pool.query(
+      'SELECT id FROM telegram_bots WHERE course_id = $1',
+      [courseId]
     );
+
+    let result;
+    if (existing.rows.length > 0) {
+      result = await pool.query(
+        `UPDATE telegram_bots
+         SET bot_token = $1, bot_username = $2, is_active = $3, webhook_secret = $4
+         WHERE course_id = $5
+         RETURNING id, bot_token, bot_username, webhook_secret, is_active, created_at`,
+        [bot_token, bot_username, is_active, webhookSecret, courseId]
+      );
+    } else {
+      result = await pool.query(
+        `INSERT INTO telegram_bots (course_id, seller_id, bot_token, bot_username, is_active, webhook_secret)
+         VALUES ($1, $2, $3, $4, $5, $6)
+         RETURNING id, bot_token, bot_username, webhook_secret, is_active, created_at`,
+        [courseId, sellerCheck.rows[0].id, bot_token, bot_username, is_active, webhookSecret]
+      );
+    }
 
     res.json(result.rows[0]);
   } catch (error) {
@@ -1602,13 +1619,13 @@ app.delete('/api/courses/:courseId/telegram-bot', authenticateToken, async (req,
     }
 
     await pool.query(
-      'UPDATE telegram_bots SET is_active = false WHERE course_id = $1',
+      'DELETE FROM telegram_bots WHERE course_id = $1',
       [courseId]
     );
 
     res.json({ success: true });
   } catch (error) {
-    console.error('Error deactivating telegram bot:', error);
+    console.error('Error deleting telegram bot:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });

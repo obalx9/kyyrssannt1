@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { apiClient } from '../lib/api';
 import { useLanguage } from '../contexts/LanguageContext';
-import { X, Send, Check, AlertCircle, Copy, ExternalLink } from 'lucide-react';
+import { X, Send, Check, AlertCircle, Copy, ExternalLink, RefreshCw } from 'lucide-react';
 
 interface TelegramBotConfigProps {
   courseId: string;
@@ -117,7 +117,15 @@ export default function TelegramBotConfig({ courseId, onClose }: TelegramBotConf
       const newWebhookUrl = `${apiUrl}/api/telegram/webhook/${savedBot.webhook_secret}`;
 
       const webhookResponse = await fetch(
-        `https://api.telegram.org/bot${botToken}/setWebhook?url=${encodeURIComponent(newWebhookUrl)}`
+        `https://api.telegram.org/bot${botToken}/setWebhook`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            url: newWebhookUrl,
+            allowed_updates: ['message', 'callback_query'],
+          }),
+        }
       );
 
       const webhookData = await webhookResponse.json();
@@ -168,6 +176,35 @@ export default function TelegramBotConfig({ courseId, onClose }: TelegramBotConf
       }, 1500);
     } catch (err: any) {
       console.error('Error deactivating bot:', err);
+      setError(err.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleReinstallWebhook = async () => {
+    if (!bot || !webhookUrl) return;
+    setSaving(true);
+    setError(null);
+    setSuccess(false);
+    try {
+      const webhookResponse = await fetch(
+        `https://api.telegram.org/bot${bot.bot_token}/setWebhook`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            url: webhookUrl,
+            allowed_updates: ['message', 'callback_query'],
+          }),
+        }
+      );
+      const webhookData = await webhookResponse.json();
+      if (!webhookData.ok) {
+        throw new Error(`Failed to reinstall webhook: ${webhookData.description}`);
+      }
+      setSuccess(true);
+    } catch (err: any) {
       setError(err.message);
     } finally {
       setSaving(false);
@@ -344,6 +381,17 @@ export default function TelegramBotConfig({ courseId, onClose }: TelegramBotConf
           )}
 
           <div className="flex gap-3 pt-4">
+            {bot?.is_active && (
+              <button
+                onClick={handleReinstallWebhook}
+                disabled={saving}
+                title="Reinstall webhook with callback_query support"
+                className="px-3 py-2 border border-teal-300 dark:border-teal-700 text-teal-600 dark:text-teal-400 rounded-lg hover:bg-teal-50 dark:hover:bg-teal-900/20 transition-colors disabled:opacity-50 flex items-center gap-1.5 text-sm"
+              >
+                <RefreshCw className="w-4 h-4" />
+                {t('reinstallWebhook') || 'Reinstall Webhook'}
+              </button>
+            )}
             {bot?.is_active && (
               <button
                 onClick={handleDeactivate}
