@@ -6,6 +6,7 @@ import { ArrowLeft, Store } from 'lucide-react';
 import KursatLogo from '../components/KursatLogo';
 import TelegramLogin from '../components/TelegramLogin';
 import LanguageSelector from '../components/LanguageSelector';
+import { apiClient } from '../lib/api';
 
 export default function SellerRegistrationPage() {
   const navigate = useNavigate();
@@ -22,73 +23,11 @@ export default function SellerRegistrationPage() {
     setError(null);
 
     try {
-      const token = localStorage.getItem('auth_token');
-      if (!token) throw new Error('No auth token');
-
-      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-      const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
-
-      const sellerResponse = await fetch(`${supabaseUrl}/rest/v1/sellers`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'apikey': supabaseKey,
-          'Authorization': `Bearer ${token}`,
-          'Prefer': 'return=minimal'
-        },
-        body: JSON.stringify({
-          user_id: user!.id,
-          business_name: businessName,
-          description: description,
-          is_approved: false,
-        })
+      await apiClient.createSellerProfile({
+        business_name: businessName,
+        description: description,
       });
 
-      if (!sellerResponse.ok) {
-        const error = await sellerResponse.text();
-        throw new Error(error);
-      }
-
-      const roleResponse = await fetch(`${supabaseUrl}/rest/v1/user_roles`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'apikey': supabaseKey,
-          'Authorization': `Bearer ${token}`,
-          'Prefer': 'return=minimal'
-        },
-        body: JSON.stringify({
-          user_id: user!.id,
-          role: 'seller',
-        })
-      });
-
-      // Ignore duplicate key errors
-      if (!roleResponse.ok && roleResponse.status !== 409) {
-        const error = await roleResponse.text();
-        if (!error.includes('duplicate')) {
-          throw new Error(error);
-        }
-      }
-
-      // Update auth user metadata with new roles
-      const updateRolesResponse = await fetch(
-        `${supabaseUrl}/functions/v1/update-user-roles`,
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${token}`,
-          },
-          body: JSON.stringify({ user_id: user!.id }),
-        }
-      );
-
-      if (!updateRolesResponse.ok) {
-        throw new Error('Failed to update user roles');
-      }
-
-      // Refresh user data
       await refreshUser();
       navigate('/seller/dashboard');
     } catch (err: any) {
