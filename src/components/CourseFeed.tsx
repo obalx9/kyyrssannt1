@@ -664,16 +664,15 @@ export default function CourseFeed({
   };
 
   const getSecureMediaUrl = (fileId: string): string => {
-    const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
     const apiUrl = import.meta.env.VITE_API_URL || 'https://api.keykurs.ru';
 
-    // If fileId looks like a storage path (contains /), it's a local file - use backend API
+    // If fileId looks like a storage path (contains /), it's S3 storage path
     if (fileId.includes('/')) {
-      return `${apiUrl}/api/files/${fileId}`;
+      return apiClient.getMediaUrl(fileId);
     }
 
-    // Otherwise, use telegram-media edge function for telegram files
-    const url = `${supabaseUrl}/functions/v1/telegram-media?file_id=${encodeURIComponent(fileId)}&course_id=${encodeURIComponent(courseId)}`;
+    // Otherwise, it's a telegram file ID - use backend API
+    const url = `${apiUrl}/api/telegram/file/${encodeURIComponent(fileId)}?course_id=${encodeURIComponent(courseId)}`;
 
     if (authToken) {
       return `${url}&token=${encodeURIComponent(authToken)}`;
