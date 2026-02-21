@@ -27,12 +27,18 @@ export const uploadToS3 = async (filename, buffer, contentType) => {
       Body: buffer,
       ContentType: contentType,
       ACL: 'public-read',
+      CacheControl: 'max-age=31536000',
     });
 
     await s3Client.send(command);
 
+    const signedUrl = await getSignedUrl(s3Client, new GetObjectCommand({
+      Bucket: BUCKET_NAME,
+      Key: key,
+    }), { expiresIn: 31536000 });
+
     const publicUrl = `${S3_ENDPOINT}/${BUCKET_NAME}/${key}`;
-    return { key, url: publicUrl };
+    return { key, url: signedUrl, publicUrl };
   } catch (error) {
     console.error('S3 upload error:', error);
     throw error;
@@ -100,12 +106,18 @@ export const downloadTelegramFileToS3 = async (fileId, botToken, filename, conte
       Body: new Uint8Array(buffer),
       ContentType: contentType,
       ACL: 'public-read',
+      CacheControl: 'max-age=31536000',
     });
 
     await s3Client.send(command);
 
+    const signedUrl = await getSignedUrl(s3Client, new GetObjectCommand({
+      Bucket: BUCKET_NAME,
+      Key: key,
+    }), { expiresIn: 31536000 });
+
     const publicUrl = `${S3_ENDPOINT}/${BUCKET_NAME}/${key}`;
-    return { key, url: publicUrl, fileSize: buffer.byteLength };
+    return { key, url: signedUrl, publicUrl, fileSize: buffer.byteLength };
   } catch (error) {
     console.error('Telegram to S3 download error:', error);
     throw error;
