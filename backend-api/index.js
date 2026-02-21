@@ -9,7 +9,7 @@ import { fileURLToPath } from 'url';
 import { dirname, join, normalize } from 'path';
 import { mkdir, readFile } from 'fs/promises';
 import { readFileSync } from 'fs';
-import { uploadToS3, deleteFromS3, getS3PublicUrl, downloadTelegramFileToS3 } from './s3Service.js';
+import { uploadToS3, deleteFromS3, getS3PublicUrl, downloadTelegramFileToS3, setupS3Cors } from './s3Service.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -2929,13 +2929,22 @@ app.use((err, req, res, next) => {
   res.status(500).json({ error: 'Internal server error', message: err.message });
 });
 
-app.listen(PORT, '0.0.0.0', () => {
+app.listen(PORT, '0.0.0.0', async () => {
   console.log(`🚀 Server running on port ${PORT}`);
   console.log(`📊 Health check: http://localhost:${PORT}/health`);
   console.log(`🌍 Environment: ${process.env.NODE_ENV || 'development'}`);
   console.log(`📁 Uploads directory: ${uploadsDir}`);
   console.log(`🔑 JWT_SECRET configured: ${!!process.env.JWT_SECRET}`);
   console.log(`✅ CORS allowed origins: ${process.env.ALLOWED_ORIGINS || 'http://localhost:5173'}`);
+
+  if (process.env.S3_BUCKET) {
+    try {
+      await setupS3Cors();
+    } catch (error) {
+      console.warn('⚠️ Could not setup S3 CORS automatically:', error.message);
+      console.log('Please configure CORS manually in Timeweb S3 dashboard if needed');
+    }
+  }
 });
 
 export default app;

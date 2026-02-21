@@ -1,4 +1,4 @@
-import { S3Client, PutObjectCommand, DeleteObjectCommand, GetObjectCommand } from '@aws-sdk/client-s3';
+import { S3Client, PutObjectCommand, DeleteObjectCommand, GetObjectCommand, PutBucketCorsCommand } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import dotenv from 'dotenv';
 
@@ -77,6 +77,34 @@ export const getS3SignedUrl = async (key, expiresIn = 3600) => {
 
 export const getS3PublicUrl = (key) => {
   return `${S3_ENDPOINT}/${BUCKET_NAME}/${key}`;
+};
+
+export const setupS3Cors = async () => {
+  try {
+    const corsConfiguration = {
+      CORSRules: [
+        {
+          AllowedMethods: ['GET', 'HEAD', 'PUT', 'POST', 'DELETE'],
+          AllowedOrigins: ['*'],
+          AllowedHeaders: ['*'],
+          ExposeHeaders: ['ETag', 'x-amz-meta-custom-header'],
+          MaxAgeSeconds: 3000,
+        },
+      ],
+    };
+
+    const command = new PutBucketCorsCommand({
+      Bucket: BUCKET_NAME,
+      CORSConfiguration: corsConfiguration,
+    });
+
+    await s3Client.send(command);
+    console.log('✅ S3 CORS configured successfully');
+    return { success: true };
+  } catch (error) {
+    console.error('S3 CORS setup error:', error);
+    throw error;
+  }
 };
 
 export const downloadTelegramFileToS3 = async (fileId, botToken, filename, contentType) => {
