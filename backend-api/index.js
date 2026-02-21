@@ -9,6 +9,7 @@ import { fileURLToPath } from 'url';
 import { dirname, join, normalize } from 'path';
 import { mkdir, readFile } from 'fs/promises';
 import { readFileSync } from 'fs';
+import { uploadToS3, deleteFromS3, getS3PublicUrl } from './s3Service.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -44,43 +45,7 @@ mkdir(uploadsDir, { recursive: true }).catch(console.error);
 
 app.use('/uploads', express.static(uploadsDir));
 
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => {
-    const courseId = req.query.courseId || req.body.courseId;
-    const lessonId = req.query.lessonId || req.body.lessonId;
-
-    console.log('[MULTER] CourseId:', courseId, 'LessonId:', lessonId);
-    console.log('[MULTER] Request query:', JSON.stringify(req.query, null, 2));
-    console.log('[MULTER] Request body:', JSON.stringify(req.body, null, 2));
-
-    if (!courseId) {
-      console.error('[MULTER] ERROR: courseId is missing! Please pass it as query parameter (?courseId=...) or form field');
-      return cb(new Error('courseId is required'), null);
-    }
-
-    const destPath = lessonId
-      ? join(uploadsDir, courseId, lessonId)
-      : join(uploadsDir, courseId);
-
-    console.log('[MULTER] Creating directory:', destPath);
-
-    mkdir(destPath, { recursive: true })
-      .then(() => {
-        console.log('[MULTER] Directory created successfully:', destPath);
-        cb(null, destPath);
-      })
-      .catch(err => {
-        console.error('[MULTER] Directory creation failed:', err.message);
-        cb(err, null);
-      });
-  },
-  filename: (req, file, cb) => {
-    const ext = file.originalname.split('.').pop();
-    const filename = `${Date.now()}_${Math.random().toString(36).substring(7)}.${ext}`;
-    console.log('[MULTER] Filename generated:', filename);
-    cb(null, filename);
-  }
-});
+const storage = multer.memoryStorage();
 
 const upload = multer({
   storage,
@@ -1755,8 +1720,6 @@ app.post('/api/upload', authenticateToken, upload.single('file'), async (req, re
     console.log('[UPLOAD] Request started');
     console.log('[UPLOAD] User:', req.user);
     console.log('[UPLOAD] File received:', !!req.file);
-    console.log('[UPLOAD] Query:', JSON.stringify(req.query, null, 2));
-    console.log('[UPLOAD] Body:', JSON.stringify(req.body, null, 2));
 
     if (!req.file) {
       console.warn('[UPLOAD] No file in request');
@@ -1766,24 +1729,24 @@ app.post('/api/upload', authenticateToken, upload.single('file'), async (req, re
     const courseId = req.query.courseId || req.body.courseId;
     const lessonId = req.query.lessonId || req.body.lessonId;
     console.log('[UPLOAD] CourseId:', courseId, 'LessonId:', lessonId);
-    console.log('[UPLOAD] File info - name:', req.file.originalname, 'size:', req.file.size, 'path:', req.file.path);
+    console.log('[UPLOAD] File info - name:', req.file.originalname, 'size:', req.file.size);
 
-    const relativePath = lessonId
-      ? `${courseId}/${lessonId}/${req.file.filename}`
-      : `${courseId}/${req.file.filename}`;
+    const s3Key = lessonId
+      ? `${courseId}/${lessonId}/${req.file.originalname}`
+      : `${courseId}/${req.file.originalname}`;
 
-    console.log('[UPLOAD] File saved to:', relativePath);
+    const { url } = await uploadToS3(s3Key, req.file.buffer, req.file.mimetype);
+
+    console.log('[UPLOAD] File uploaded to S3:', url);
 
     res.json({
-      filePath: relativePath,
+      filePath: s3Key,
+      fileUrl: url,
       fileSize: req.file.size,
       fileName: req.file.originalname
     });
   } catch (error) {
-    console.error('[UPLOAD] Error occurred:');
-    console.error('[UPLOAD] Error message:', error.message);
-    console.error('[UPLOAD] Error stack:', error.stack);
-    console.error('[UPLOAD] Full error object:', JSON.stringify(error, Object.getOwnPropertyNames(error), 2));
+    console.error('[UPLOAD] Error occurred:', error.message);
     res.status(500).json({ error: 'Internal server error', details: error.message });
   }
 });
