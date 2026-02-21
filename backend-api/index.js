@@ -9,7 +9,7 @@ import { fileURLToPath } from 'url';
 import { dirname, join, normalize } from 'path';
 import { mkdir, readFile } from 'fs/promises';
 import { readFileSync } from 'fs';
-import { uploadToS3, deleteFromS3, getS3PublicUrl } from './s3Service.js';
+import { uploadToS3, deleteFromS3, getS3PublicUrl, downloadTelegramFileToS3 } from './s3Service.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -2847,6 +2847,70 @@ if (process.env.NODE_ENV === 'production') {
     res.sendFile(join(buildPath, 'index.html'));
   });
 }
+
+app.post('/api/telegram/download-to-s3', async (req, res) => {
+  try {
+    const { fileId, postId, filename, contentType } = req.body;
+    const token = req.headers.authorization?.replace('Bearer ', '');
+
+    if (!token) {
+      return res.status(401).json({ error: 'Missing authorization token' });
+    }
+
+    let userId;
+    try {
+      const decoded = jwt.verify(token, process.env.JWT_SECRET);
+      userId = decoded.sub || decoded.id;
+    } catch (err) {
+      return res.status(401).json({ error: 'Invalid token' });
+    }
+
+    if (!fileId || !postId || !filename) {
+      return res.status(400).json({ error: 'Missing fileId, postId, or filename' });
+    }
+
+    const postCheck = await pool.query(
+      `SELECT cp.id, c.seller_id
+       FROM course_posts cp
+       JOIN courses c ON cp.course_id = c.id
+       WHERE cp.id = $1`,
+      [postId]
+    );
+
+    if (postCheck.rows.length === 0) {
+      return res.status(404).json({ error: 'Post not found' });
+    }
+
+    const post = postCheck.rows[0];
+    if (post.seller_id !== userId) {
+      return res.status(403).json({ error: 'Not authorized to download this media' });
+    }
+
+    const result = await downloadTelegramFileToS3(
+      fileId,
+      process.env.TELEGRAM_BOT_TOKEN,
+      filename,
+      contentType || 'application/octet-stream'
+    );
+
+    await pool.query(
+      `UPDATE course_posts
+       SET s3_key = $1, s3_url = $2
+       WHERE id = $3`,
+      [result.key, result.url, postId]
+    );
+
+    res.json({
+      success: true,
+      s3Url: result.url,
+      s3Key: result.key,
+      fileSize: result.fileSize
+    });
+  } catch (error) {
+    console.error('[ERROR] Download to S3 error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
 
 app.use((err, req, res, next) => {
   console.error(err.stack);

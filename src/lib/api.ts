@@ -351,6 +351,18 @@ export class ApiClient {
     const token = this.token || localStorage.getItem('token') || '';
     return `${API_URL}/api/telegram/file/${encodeURIComponent(fileId)}?course_id=${encodeURIComponent(courseId)}&token=${encodeURIComponent(token)}`;
   }
+
+  async downloadTelegramMediaToS3(postId: string, fileId: string, filename: string, contentType: string = 'application/octet-stream') {
+    return this.request('/api/telegram/download-to-s3', {
+      method: 'POST',
+      body: JSON.stringify({
+        fileId,
+        postId,
+        filename,
+        contentType,
+      }),
+    });
+  }
 }
 
 export const apiClient = new ApiClient();

@@ -72,3 +72,42 @@ export const getS3SignedUrl = async (key, expiresIn = 3600) => {
 export const getS3PublicUrl = (key) => {
   return `${S3_ENDPOINT}/${BUCKET_NAME}/${key}`;
 };
+
+export const downloadTelegramFileToS3 = async (fileId, botToken, filename, contentType) => {
+  try {
+    const getFileUrl = `https://api.telegram.org/bot${botToken}/getFile?file_id=${fileId}`;
+    const getFileResponse = await fetch(getFileUrl);
+    const fileInfo = await getFileResponse.json();
+
+    if (!fileInfo.ok) {
+      throw new Error(`Failed to get Telegram file info: ${fileInfo.description}`);
+    }
+
+    const filePath = fileInfo.result.file_path;
+    const downloadUrl = `https://api.telegram.org/file/bot${botToken}/${filePath}`;
+
+    const fileResponse = await fetch(downloadUrl);
+    if (!fileResponse.ok) {
+      throw new Error(`Failed to download file from Telegram: ${fileResponse.statusText}`);
+    }
+
+    const buffer = await fileResponse.arrayBuffer();
+    const key = `media/${Date.now()}-${filename}`;
+
+    const command = new PutObjectCommand({
+      Bucket: BUCKET_NAME,
+      Key: key,
+      Body: new Uint8Array(buffer),
+      ContentType: contentType,
+      ACL: 'public-read',
+    });
+
+    await s3Client.send(command);
+
+    const publicUrl = `${S3_ENDPOINT}/${BUCKET_NAME}/${key}`;
+    return { key, url: publicUrl, fileSize: buffer.byteLength };
+  } catch (error) {
+    console.error('Telegram to S3 download error:', error);
+    throw error;
+  }
+};
