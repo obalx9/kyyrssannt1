@@ -1,4 +1,7 @@
 import { useEffect, useState, useRef } from 'react';
+import { apiClient } from '../lib/api';
+import { useLanguage } from '../contexts/LanguageContext';
+import { Send } from 'lucide-react';
 
 interface TelegramLoginProps {
   onSuccess?: () => void;
@@ -10,9 +13,8 @@ declare global {
   }
 }
 
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
-
 export default function TelegramLogin({ onSuccess }: TelegramLoginProps) {
+  const { t } = useLanguage();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [botUsername, setBotUsername] = useState<string>('');
@@ -22,11 +24,9 @@ export default function TelegramLogin({ onSuccess }: TelegramLoginProps) {
   useEffect(() => {
     const loadBotConfig = async () => {
       try {
-        const response = await fetch(`${API_URL}/api/telegram-bot`);
-        if (!response.ok) throw new Error('Failed to load bot config');
-        const data = await response.json();
-        if (data?.botUsername) {
-          setBotUsername(data.botUsername);
+        const data = await apiClient.getTelegramBot();
+        if (data?.bot_username) {
+          setBotUsername(data.bot_username);
         }
       } catch (err) {
         console.error('Error loading bot config:', err);
@@ -46,28 +46,13 @@ export default function TelegramLogin({ onSuccess }: TelegramLoginProps) {
       setError(null);
 
       try {
-        const response = await fetch(`${API_URL}/api/auth/telegram`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            id: user.id,
-            username: user.username,
-            first_name: user.first_name,
-            last_name: user.last_name,
-            photo_url: user.photo_url,
-            hash: user.hash,
-          }),
-        });
+        const data = await apiClient.telegramAuth(user);
 
-        if (!response.ok) {
-          const errorData = await response.json();
-          throw new Error(errorData.error || 'Authentication failed');
+        if (data.error) {
+          throw new Error(data.error);
         }
 
-        const data = await response.json();
-
-        if (data.token) {
-          localStorage.setItem('token', data.token);
+        if (data.token && data.user) {
           if (onSuccess) {
             onSuccess();
           }
@@ -76,7 +61,7 @@ export default function TelegramLogin({ onSuccess }: TelegramLoginProps) {
         }
       } catch (err: any) {
         console.error('Telegram auth error:', err);
-        setError(err.message || 'Authentication error');
+        setError(err.message || t('authError'));
       } finally {
         setLoading(false);
       }
@@ -113,12 +98,12 @@ export default function TelegramLogin({ onSuccess }: TelegramLoginProps) {
       }
       delete window.onTelegramAuth;
     };
-  }, [botUsername, onSuccess]);
+  }, [botUsername, onSuccess, t]);
 
   if (!botUsername) {
     return (
       <div className="text-center py-4 text-gray-600 dark:text-gray-400">
-        Configure Telegram bot
+        {t('configureTelegramBot')}
       </div>
     );
   }
