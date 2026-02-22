@@ -47,4 +47,3 @@ apply-migration*
 start-api-test.sh
 test-db.js
 setup-timeweb-db.sh
-привет
