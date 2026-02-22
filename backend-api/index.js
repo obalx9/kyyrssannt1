@@ -2929,22 +2929,42 @@ app.use((err, req, res, next) => {
   res.status(500).json({ error: 'Internal server error', message: err.message });
 });
 
-app.listen(PORT, '0.0.0.0', async () => {
-  console.log(`🚀 Server running on port ${PORT}`);
-  console.log(`📊 Health check: http://localhost:${PORT}/health`);
-  console.log(`🌍 Environment: ${process.env.NODE_ENV || 'development'}`);
-  console.log(`📁 Uploads directory: ${uploadsDir}`);
-  console.log(`🔑 JWT_SECRET configured: ${!!process.env.JWT_SECRET}`);
-  console.log(`✅ CORS allowed origins: ${process.env.ALLOWED_ORIGINS || 'http://localhost:5173'}`);
+async function initializeServer() {
+  try {
+    console.log('[INIT] Checking database connection...');
+    await checkDatabaseConnection();
 
-  if (process.env.S3_BUCKET) {
-    try {
-      await setupS3Cors();
-    } catch (error) {
-      console.warn('⚠️ Could not setup S3 CORS automatically:', error.message);
-      console.log('Please configure CORS manually in Timeweb S3 dashboard if needed');
+    if (!dbConnectionStatus.connected) {
+      console.error('[ERROR] Failed to connect to database:', dbConnectionStatus.error);
+      console.error('[ERROR] Server cannot start without database connection');
+      process.exit(1);
     }
+
+    console.log('[INIT] Database connection verified ✓');
+
+    app.listen(PORT, '0.0.0.0', async () => {
+      console.log(`🚀 Server running on port ${PORT}`);
+      console.log(`📊 Health check: http://localhost:${PORT}/health`);
+      console.log(`🌍 Environment: ${process.env.NODE_ENV || 'development'}`);
+      console.log(`📁 Uploads directory: ${uploadsDir}`);
+      console.log(`🔑 JWT_SECRET configured: ${!!process.env.JWT_SECRET}`);
+      console.log(`✅ CORS allowed origins: ${process.env.ALLOWED_ORIGINS || 'http://localhost:5173'}`);
+
+      if (process.env.S3_BUCKET) {
+        try {
+          await setupS3Cors();
+        } catch (error) {
+          console.warn('⚠️ Could not setup S3 CORS automatically:', error.message);
+          console.log('Please configure CORS manually in Timeweb S3 dashboard if needed');
+        }
+      }
+    });
+  } catch (error) {
+    console.error('[ERROR] Failed to initialize server:', error.message);
+    process.exit(1);
   }
-});
+}
+
+initializeServer();
 
 export default app;
