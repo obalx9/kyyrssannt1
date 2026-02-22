@@ -5,22 +5,19 @@ WORKDIR /app
 COPY package*.json ./
 COPY backend-api/package*.json ./backend-api/
 
-RUN npm ci
-RUN cd backend-api && npm ci
+RUN npm ci --no-optional
+RUN cd backend-api && npm ci --no-optional
 
 COPY . .
 
 RUN npm run build
 
-RUN npm ci --omit=dev
-RUN cd backend-api && npm ci --omit=dev
-
 ENV NODE_ENV=production
 ENV PORT=3000
 
-HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-  CMD node -e "require('http').get('http://localhost:3000/health', (r) => {if (r.statusCode !== 200) throw new Error(r.statusCode)})"
-
 EXPOSE 3000
+
+HEALTHCHECK --interval=30s --timeout=10s --start-period=10s --retries=3 \
+  CMD node -e "require('http').get('http://localhost:3000/health', (r) => {if (r.statusCode !== 200) throw new Error(r.statusCode)})" || exit 1
 
 CMD ["node", "backend-api/index.js"]

@@ -1,9 +1,9 @@
 module.exports = {
   apps: [{
-    name: 'keykurs-api',
-    script: './api/index.js',
-    instances: 2,
-    exec_mode: 'cluster',
+    name: 'kursat-api',
+    script: './backend-api/index.js',
+    instances: 1,
+    exec_mode: 'fork',
     env: {
       NODE_ENV: 'production',
       PORT: 3000
@@ -15,9 +15,9 @@ module.exports = {
     autorestart: true,
     max_restarts: 10,
     min_uptime: '10s',
-    max_memory_restart: '500M',
+    max_memory_restart: '1G',
     watch: false,
-    ignore_watch: ['node_modules', 'logs', 'build'],
+    ignore_watch: ['node_modules', 'logs', 'build', 'dist'],
     env_production: {
       NODE_ENV: 'production',
       PORT: 3000

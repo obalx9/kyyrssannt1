@@ -1,96 +1,63 @@
 #!/bin/bash
 
-echo "🚀 Начинаем деплой приложения на Timeweb..."
+set -e
 
-# Цвета для вывода
+echo "Deploying Kursat application to Timeweb..."
+
 GREEN='\033[0;32m'
 RED='\033[0;31m'
 YELLOW='\033[1;33m'
-NC='\033[0m' # No Color
+NC='\033[0m'
 
-# Функция для вывода ошибок
 error_exit() {
-    echo -e "${RED}❌ Ошибка: $1${NC}" 1>&2
+    echo -e "${RED}Error: $1${NC}" 1>&2
     exit 1
 }
 
-# Проверка, что скрипт запущен из правильной директории
 if [ ! -f "package.json" ]; then
-    error_exit "package.json не найден. Запустите скрипт из корня проекта."
+    error_exit "package.json not found. Run script from project root."
 fi
 
-# Проверка наличия .env файла
 if [ ! -f ".env" ]; then
-    error_exit ".env файл не найден. Создайте его перед деплоем."
+    error_exit ".env file not found. Create it before deployment."
 fi
 
-echo -e "${YELLOW}⏸️  Остановка текущего приложения...${NC}"
-pm2 stop keykurs-api 2>/dev/null || echo "Приложение не было запущено"
+echo -e "${YELLOW}Installing root dependencies...${NC}"
+npm ci --omit=dev || error_exit "Failed to install root dependencies"
 
-# Обновление кода из Git (если используется)
-if [ -d ".git" ]; then
-    echo -e "${YELLOW}📥 Получение последних изменений из Git...${NC}"
-    git pull origin main || error_exit "Не удалось получить изменения из Git"
-fi
-
-# Установка зависимостей для API (backend)
-echo -e "${YELLOW}📦 Установка зависимостей для API...${NC}"
-cd api
-npm install --omit=dev || error_exit "Не удалось установить зависимости API"
+echo -e "${YELLOW}Installing backend API dependencies...${NC}"
+cd backend-api
+npm ci --omit=dev || error_exit "Failed to install backend dependencies"
 cd ..
 
-# Установка зависимостей для сборки frontend
-echo -e "${YELLOW}📦 Установка зависимостей для frontend...${NC}"
-npm install || error_exit "Не удалось установить зависимости"
+echo -e "${YELLOW}Building frontend...${NC}"
+npm run build || error_exit "Failed to build frontend"
 
-# Сборка frontend
-echo -e "${YELLOW}🔨 Сборка frontend...${NC}"
-npm run build || error_exit "Не удалось собрать frontend"
+echo -e "${YELLOW}Stopping current application...${NC}"
+pm2 stop kursat-api 2>/dev/null || echo "Application was not running"
 
-# Очистка dev зависимостей
-echo -e "${YELLOW}🧹 Очистка dev зависимостей...${NC}"
-rm -rf node_modules
-echo "Frontend собран, dev зависимости удалены"
+echo -e "${YELLOW}Starting application with PM2...${NC}"
+pm2 start ecosystem.config.js --update-env || error_exit "Failed to start application"
 
-# Проверка наличия директории для логов
-if [ ! -d "logs" ]; then
-    echo -e "${YELLOW}📁 Создание директории для логов...${NC}"
-    mkdir -p logs
-fi
-
-# Запуск приложения через PM2
-echo -e "${YELLOW}🚀 Запуск приложения через PM2...${NC}"
-pm2 start ecosystem.config.js || error_exit "Не удалось запустить приложение"
-
-# Сохранение конфигурации PM2
 pm2 save
 
-# Ожидание запуска
-sleep 3
+sleep 2
 
-# Проверка статуса
-echo -e "${YELLOW}📊 Статус приложения:${NC}"
+echo -e "${YELLOW}Application status:${NC}"
 pm2 status
 
-# Проверка health endpoint
-echo -e "${YELLOW}🏥 Проверка health endpoint...${NC}"
+echo -e "${YELLOW}Checking health endpoint...${NC}"
 if curl -f http://localhost:3000/health > /dev/null 2>&1; then
-    echo -e "${GREEN}✅ Backend API работает!${NC}"
+    echo -e "${GREEN}Backend API is running!${NC}"
 else
-    echo -e "${RED}❌ Backend API не отвечает на health check${NC}"
-    echo -e "${YELLOW}Проверьте логи: pm2 logs keykurs-api${NC}"
+    echo -e "${RED}Backend API is not responding to health check${NC}"
+    echo -e "${YELLOW}Check logs: pm2 logs kursat-api${NC}"
 fi
 
-# Перезапуск Nginx (опционально)
-if command -v nginx &> /dev/null; then
-    echo -e "${YELLOW}🔄 Перезапуск Nginx...${NC}"
-    sudo systemctl reload nginx || echo "Не удалось перезапустить Nginx"
-fi
-
-echo -e "${GREEN}✅ Деплой завершен успешно!${NC}"
+echo -e "${GREEN}Deployment completed successfully!${NC}"
 echo ""
-echo "Полезные команды:"
-echo "  pm2 status              - проверить статус"
-echo "  pm2 logs keykurs-api    - посмотреть логи"
-echo "  pm2 restart keykurs-api - перезапустить"
-echo "  pm2 monit               - мониторинг в реальном времени"
+echo "Useful commands:"
+echo "  pm2 status          - check status"
+echo "  pm2 logs kursat-api - view logs"
+echo "  pm2 restart kursat-api - restart"
+echo "  pm2 monit           - real-time monitoring"

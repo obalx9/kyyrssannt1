@@ -21,7 +21,6 @@ out
 .vuepress/dist
 .cache/
 .output/
-.env
 .env.production.local
 .env.development.local
 .env.test.local
@@ -35,3 +34,16 @@ out
 .editorconfig
 .prettierignore
 .prettierrc
+timeweb-migrations/
+certs/
+*.md
+BACKEND_DEPLOY_*
+DATABASE_MIGRATION_*
+READY_TO_DEPLOY*
+ДОКУМЕНТАЦИЯ_*
+НАЧНИТЕ_*
+.env.timeweb.example
+apply-migration*
+start-api-test.sh
+test-db.js
+setup-timeweb-db.sh
