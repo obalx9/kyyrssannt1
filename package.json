@@ -1,42 +1,22 @@
 {
-  "name": "vite-react-typescript-starter",
+  "name": "kursat-backend",
   "private": true,
-  "version": "0.0.0",
+  "version": "1.0.0",
   "type": "module",
+  "description": "Backend API for Kursat platform",
   "scripts": {
-    "dev": "vite",
-    "build": "vite build",
-    "start": "node backend-api/index.js",
-    "lint": "eslint .",
-    "preview": "vite preview",
-    "typecheck": "tsc --noEmit -p tsconfig.app.json"
+    "build": "node --check index.js && node --check s3Service.js && echo Build complete",
+    "start": "node index.js",
+    "dev": "node index.js"
   },
   "dependencies": {
-    "@vitejs/plugin-react": "^4.3.1",
-    "autoprefixer": "^10.4.18",
+    "@aws-sdk/client-s3": "^3.500.0",
+    "@aws-sdk/s3-request-presigner": "^3.500.0",
     "cors": "^2.8.5",
     "dotenv": "^16.4.5",
     "express": "^4.21.1",
     "jsonwebtoken": "^9.0.3",
-    "lucide-react": "^0.344.0",
-    "multer": "^2.0.2",
-    "pg": "^8.12.0",
-    "postcss": "^8.4.35",
-    "react": "^18.3.1",
-    "react-dom": "^18.3.1",
-    "react-router-dom": "^7.13.0",
-    "tailwindcss": "^3.4.1",
-    "typescript": "^5.5.3",
-    "vite": "^5.4.2"
-  },
-  "devDependencies": {
-    "@eslint/js": "^9.9.1",
-    "@types/react": "^18.3.5",
-    "@types/react-dom": "^18.3.0",
-    "eslint": "^9.9.1",
-    "eslint-plugin-react-hooks": "^5.1.0-rc.0",
-    "eslint-plugin-react-refresh": "^0.4.11",
-    "globals": "^15.9.0",
-    "typescript-eslint": "^8.3.0"
+    "multer": "^2.0.0",
+    "pg": "^8.12.0"
   }
 }
