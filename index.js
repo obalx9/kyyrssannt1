@@ -261,6 +261,88 @@ app.get('/api/status', (req, res) => {
   });
 });
 
+app.get('/api/telegram-config', async (req, res) => {
+  try {
+    const botToken = process.env.TELEGRAM_BOT_TOKEN;
+    const botUsername = process.env.TELEGRAM_BOT_USERNAME;
+    const apiUrl = process.env.VITE_API_URL;
+
+    if (!botToken || !botUsername) {
+      return res.status(500).json({ error: 'Telegram bot configuration missing' });
+    }
+
+    res.json({
+      botToken,
+      botUsername,
+      apiUrl,
+      webhookUrl: `${apiUrl}/api/telegram/webhook`,
+    });
+  } catch (error) {
+    console.error('Telegram config error:', error);
+    res.status(500).json({ error: 'Failed to fetch telegram config' });
+  }
+});
+
+app.post('/api/telegram/webhook', express.json(), async (req, res) => {
+  try {
+    const message = req.body.message;
+
+    if (!message) {
+      return res.status(400).json({ error: 'No message' });
+    }
+
+    console.log('[TELEGRAM] Webhook received:', {
+      chatId: message.chat?.id,
+      userId: message.from?.id,
+      text: message.text,
+    });
+
+    res.status(200).json({ ok: true });
+  } catch (error) {
+    console.error('Telegram webhook error:', error);
+    res.status(500).json({ error: 'Webhook processing failed' });
+  }
+});
+
+app.get('/api/courses/:id/telegram-config', authenticateRequest, async (req, res) => {
+  try {
+    const { id: courseId } = req.params;
+
+    const courseResult = await pool.query(
+      'SELECT id, title, author_id FROM courses WHERE id = $1',
+      [courseId]
+    );
+
+    if (courseResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Course not found' });
+    }
+
+    const course = courseResult.rows[0];
+
+    if (course.author_id !== req.user.id) {
+      return res.status(403).json({ error: 'Not authorized' });
+    }
+
+    const botConfig = await pool.query(
+      'SELECT bot_token, bot_username, webhook_url FROM telegram_bots WHERE course_id = $1 AND is_active = true',
+      [courseId]
+    );
+
+    if (botConfig.rows.length === 0) {
+      return res.status(404).json({ error: 'No telegram bot configured for this course' });
+    }
+
+    res.json({
+      courseId,
+      courseTitle: course.title,
+      ...botConfig.rows[0],
+    });
+  } catch (error) {
+    console.error('Get telegram config error:', error);
+    res.status(500).json({ error: 'Failed to fetch telegram config' });
+  }
+});
+
 app.listen(PORT, () => {
   console.log(`✅ Backend API running on port ${PORT}`);
   console.log(`📍 Environment: ${process.env.NODE_ENV || 'development'}`);
