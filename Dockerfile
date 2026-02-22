@@ -5,8 +5,8 @@ WORKDIR /app
 COPY package*.json ./
 COPY backend-api/package*.json ./backend-api/
 
-RUN npm ci --no-optional
-RUN cd backend-api && npm ci --no-optional
+RUN npm ci --omit=dev
+RUN cd backend-api && npm ci --omit=dev
 
 COPY . .
 
