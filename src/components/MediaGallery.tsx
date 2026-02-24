@@ -39,7 +39,21 @@ export default function MediaGallery({ items, courseId, onMediaClick, courseWate
           let url: string;
 
           if (item.storage_path) {
-            url = apiClient.getMediaUrl(item.storage_path);
+            // Use proxied S3 URL
+            let storagePath = item.storage_path;
+
+            // If it's a full S3 URL, extract the key
+            if (storagePath.includes('s3.twcstorage.ru')) {
+              try {
+                const urlObj = new URL(storagePath);
+                const pathParts = urlObj.pathname.split('/').filter(p => p);
+                storagePath = pathParts.slice(1).join('/');
+              } catch (e) {
+                console.error('Failed to parse S3 URL:', e);
+              }
+            }
+
+            url = apiClient.getMediaUrl(storagePath);
           } else if (item.telegram_file_id) {
             const token = localStorage.getItem('token');
             if (!token) {
