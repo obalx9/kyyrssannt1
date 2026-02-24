@@ -329,11 +329,15 @@ export class ApiClient {
 
   getMediaUrl(storagePath: string): string {
     if (storagePath.startsWith('http')) {
+      if (storagePath.includes('s3.twcstorage.ru')) {
+        return `${API_URL}/api/s3/proxy?url=${encodeURIComponent(storagePath)}`;
+      }
       return storagePath;
     }
     const s3Endpoint = import.meta.env.VITE_S3_ENDPOINT || 'https://s3.twcstorage.ru';
     const s3Bucket = import.meta.env.VITE_S3_BUCKET || 'media';
-    return `${s3Endpoint}/${s3Bucket}/${storagePath}`;
+    const fullUrl = `${s3Endpoint}/${s3Bucket}/${storagePath}`;
+    return `${API_URL}/api/s3/proxy?url=${encodeURIComponent(fullUrl)}`;
   }
 
   async getTelegramFileUrl(fileId: string, courseId: string): Promise<string> {
