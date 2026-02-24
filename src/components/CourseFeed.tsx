@@ -647,12 +647,6 @@ export default function CourseFeed({
       const groupMediaItems = post.media_items.map(item => {
         // Extract just the S3 key from full S3 URL if present
         let fileId = item.storage_path || item.telegram_file_id || '';
-
-        // Remove telegram/ prefix if present
-        if (fileId.startsWith('telegram/')) {
-          fileId = fileId.substring(9);
-        }
-
         if (fileId.includes('s3.twcstorage.ru')) {
           try {
             const url = new URL(fileId);
