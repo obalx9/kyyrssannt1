@@ -208,14 +208,13 @@ export default function ProtectedVideoPlayer({
   };
 
   useEffect(() => {
-    if (videoRef.current && autoPlay && mediaType === 'video' && !loading && url) {
-      // Only autoplay if explicitly requested and media is loaded
+    if (videoRef.current && autoPlay && mediaType === 'video') {
       videoRef.current.play().catch(err => {
         console.error('Error playing video:', err);
-        // Don't set error for autoplay failures - user can manually play
+        setError('Failed to play video');
       });
     }
-  }, [url, autoPlay, mediaType, loading]);
+  }, [url, autoPlay, mediaType]);
 
   useEffect(() => {
     const video = videoRef.current;
