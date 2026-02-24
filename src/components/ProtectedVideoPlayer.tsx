@@ -51,29 +51,38 @@ export default function ProtectedVideoPlayer({
     const setupMediaUrl = async () => {
       try {
         setError(null);
-
         const token = localStorage.getItem('token');
 
-        if (mediaType === 'video') {
+        const isS3Url = rawUrl.includes('/s3/') || rawUrl.includes('storage_path=');
+        const isTelegramProxy = rawUrl.includes('/api/telegram/file/');
+
+        if (isS3Url) {
           setLoading(false);
-          const urlWithToken = token && rawUrl.includes('/api/')
+          setBlobUrl(rawUrl);
+        } else if (isTelegramProxy) {
+          const urlWithToken = token
             ? `${rawUrl}${rawUrl.includes('?') ? '&' : '?'}token=${encodeURIComponent(token)}`
             : rawUrl;
-          setBlobUrl(urlWithToken);
-        } else {
-          setLoading(true);
-          const response = await fetch(rawUrl, {
-            headers: token ? { 'Authorization': `Bearer ${token}` } : {}
-          });
 
-          if (!response.ok) {
-            throw new Error(`Failed to load media: ${response.status}`);
+          if (mediaType === 'video') {
+            setLoading(false);
+            setBlobUrl(urlWithToken);
+          } else {
+            setLoading(true);
+            const response = await fetch(urlWithToken);
+
+            if (!response.ok) {
+              throw new Error(`Failed to load media: ${response.status}`);
+            }
+
+            const blob = await response.blob();
+            const url = URL.createObjectURL(blob);
+            setBlobUrl(url);
+            setLoading(false);
           }
-
-          const blob = await response.blob();
-          const url = URL.createObjectURL(blob);
-          setBlobUrl(url);
+        } else {
           setLoading(false);
+          setBlobUrl(rawUrl);
         }
       } catch (err) {
         console.error('Error loading media:', err);
