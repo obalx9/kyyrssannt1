@@ -2,6 +2,14 @@ class MediaCache {
   private cache: Map<string, string> = new Map();
   private loading: Map<string, Promise<string>> = new Map();
 
+  private isDirectS3Url(url: string): boolean {
+    return url.includes('s3.twcstorage.ru') && url.startsWith('http');
+  }
+
+  private isProxyUrl(url: string): boolean {
+    return url.includes('/api/') && !url.startsWith('http://localhost');
+  }
+
   async getMedia(fileId: string, mediaUrl: string): Promise<string> {
     if (this.cache.has(fileId)) {
       return this.cache.get(fileId)!;
@@ -11,16 +19,35 @@ class MediaCache {
       return this.loading.get(fileId)!;
     }
 
-    const loadPromise = this.fetchMedia(fileId, mediaUrl);
+    const loadPromise = this.isDirectS3Url(mediaUrl)
+      ? this.fetchDirectMedia(fileId, mediaUrl)
+      : this.fetchMedia(fileId, mediaUrl);
+
     this.loading.set(fileId, loadPromise);
 
     try {
-      const blobUrl = await loadPromise;
-      this.cache.set(fileId, blobUrl);
-      return blobUrl;
+      const result = await loadPromise;
+      this.cache.set(fileId, result);
+      return result;
+    } catch (error) {
+      if (this.isDirectS3Url(mediaUrl) && this.isProxyUrl(mediaUrl)) {
+        console.warn('Direct S3 fetch failed, fallback not available for direct URLs');
+      }
+      throw error;
     } finally {
       this.loading.delete(fileId);
     }
+  }
+
+  private async fetchDirectMedia(fileId: string, mediaUrl: string): Promise<string> {
+    const response = await fetch(mediaUrl);
+
+    if (!response.ok) {
+      throw new Error(`Failed to load S3 media: ${response.status}`);
+    }
+
+    const blob = await response.blob();
+    return URL.createObjectURL(blob);
   }
 
   private async fetchMedia(fileId: string, mediaUrl: string): Promise<string> {
