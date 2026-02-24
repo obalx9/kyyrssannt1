@@ -53,7 +53,7 @@ export default function ProtectedVideoPlayer({
         setError(null);
         const token = localStorage.getItem('token');
 
-        const isS3Url = rawUrl.includes('/s3/') || rawUrl.includes('storage_path=');
+        const isS3Url = rawUrl.includes('/api/s3/proxy/') || rawUrl.includes('/s3/') || rawUrl.includes('storage_path=');
         const isTelegramProxy = rawUrl.includes('/api/telegram/file/');
 
         if (isS3Url) {
