@@ -42,11 +42,6 @@ export default function MediaGallery({ items, courseId, onMediaClick, courseWate
             // Use proxied S3 URL
             let storagePath = item.storage_path;
 
-            // Remove telegram/ prefix if present
-            if (storagePath.startsWith('telegram/')) {
-              storagePath = storagePath.substring(9);
-            }
-
             // If it's a full S3 URL, extract the key
             if (storagePath.includes('s3.twcstorage.ru')) {
               try {
