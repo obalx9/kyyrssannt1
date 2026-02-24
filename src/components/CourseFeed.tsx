@@ -647,7 +647,7 @@ export default function CourseFeed({
       const groupMediaItems = post.media_items.map(item => ({
         id: item.id,
         media_type: item.media_type || 'image',
-        file_id: item.telegram_file_id || item.storage_path || '',
+        file_id: item.storage_path || item.telegram_file_id || '',
         thumbnail_file_id: item.telegram_thumbnail_file_id || undefined,
         file_name: item.file_name || undefined,
         messageId: post.id
