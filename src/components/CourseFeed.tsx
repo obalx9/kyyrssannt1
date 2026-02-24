@@ -678,24 +678,30 @@ export default function CourseFeed({
     }
   };
 
-  const getSecureMediaUrl = (fileId: string): string => {
+  const getSecureMediaUrl = (fileId: string, useProxy: boolean = false): string => {
     const apiUrl = import.meta.env.VITE_API_URL || 'https://api.keykurs.ru';
+    const s3Endpoint = import.meta.env.VITE_S3_ENDPOINT || 'https://s3.twcstorage.ru';
+    const s3Bucket = import.meta.env.VITE_S3_BUCKET || '8eb1164e-0cbb-4459-a415-8bb6cadc47eb';
 
-    // If fileId is a full S3 URL, extract the key and proxy it
+    // If fileId is a full S3 URL
     if (fileId.includes('s3.twcstorage.ru')) {
-      try {
-        const url = new URL(fileId);
-        const pathParts = url.pathname.split('/').filter(p => p);
-        const s3Key = pathParts.slice(1).join('/');
-        return `${apiUrl}/api/s3/proxy/${s3Key}`;
-      } catch (e) {
-        console.error('Failed to parse S3 URL:', e);
+      if (useProxy) {
+        try {
+          const url = new URL(fileId);
+          const pathParts = url.pathname.split('/').filter(p => p);
+          const s3Key = pathParts.slice(1).join('/');
+          return `${apiUrl}/api/s3/proxy/${s3Key}`;
+        } catch (e) {
+          console.error('Failed to parse S3 URL:', e);
+        }
       }
+      return fileId;
     }
 
-    // If fileId looks like a storage path (contains /), use S3 proxy
+    // If fileId looks like a storage path (contains /), use direct S3 URL by default
     if (fileId.includes('/')) {
-      return `${apiUrl}/api/s3/proxy/${fileId}`;
+      const directUrl = `${s3Endpoint}/${s3Bucket}/${fileId}`;
+      return useProxy ? `${apiUrl}/api/s3/proxy/${fileId}` : directUrl;
     }
 
     // Otherwise, it's a telegram file ID - use backend API
