@@ -644,14 +644,29 @@ export default function CourseFeed({
 
   const handleMediaClick = (post: CoursePost, initialIndex: number = 0) => {
     if (post.media_items && post.media_items.length > 0) {
-      const groupMediaItems = post.media_items.map(item => ({
-        id: item.id,
-        media_type: item.media_type || 'image',
-        file_id: item.storage_path || item.telegram_file_id || '',
-        thumbnail_file_id: item.telegram_thumbnail_file_id || undefined,
-        file_name: item.file_name || undefined,
-        messageId: post.id
-      }));
+      const groupMediaItems = post.media_items.map(item => {
+        // Extract just the S3 key from full S3 URL if present
+        let fileId = item.storage_path || item.telegram_file_id || '';
+        if (fileId.includes('s3.twcstorage.ru')) {
+          try {
+            const url = new URL(fileId);
+            const pathParts = url.pathname.split('/').filter(p => p);
+            // Remove bucket name and get the key
+            fileId = pathParts.slice(1).join('/');
+          } catch (e) {
+            console.error('Failed to parse S3 URL:', e);
+          }
+        }
+
+        return {
+          id: item.id,
+          media_type: item.media_type || 'image',
+          file_id: fileId,
+          thumbnail_file_id: item.telegram_thumbnail_file_id || undefined,
+          file_name: item.file_name || undefined,
+          messageId: post.id
+        };
+      });
       setCurrentMediaGroup(groupMediaItems);
       setSelectedMediaIndex(initialIndex);
     } else {
@@ -666,9 +681,21 @@ export default function CourseFeed({
   const getSecureMediaUrl = (fileId: string): string => {
     const apiUrl = import.meta.env.VITE_API_URL || 'https://api.keykurs.ru';
 
-    // If fileId looks like a storage path (contains /), it's S3 storage path
+    // If fileId is a full S3 URL, extract the key and proxy it
+    if (fileId.includes('s3.twcstorage.ru')) {
+      try {
+        const url = new URL(fileId);
+        const pathParts = url.pathname.split('/').filter(p => p);
+        const s3Key = pathParts.slice(1).join('/');
+        return `${apiUrl}/api/s3/proxy/${s3Key}`;
+      } catch (e) {
+        console.error('Failed to parse S3 URL:', e);
+      }
+    }
+
+    // If fileId looks like a storage path (contains /), use S3 proxy
     if (fileId.includes('/')) {
-      return apiClient.getMediaUrl(fileId);
+      return `${apiUrl}/api/s3/proxy/${fileId}`;
     }
 
     // Otherwise, it's a telegram file ID - use backend API
