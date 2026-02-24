@@ -327,14 +327,14 @@ export class ApiClient {
     });
   }
 
-  getMediaUrl(storagePath: string): string {
+  getMediaUrl(storagePath: string, useDirect: boolean = true): string {
     if (storagePath.startsWith('http')) {
-      return this.getProxiedS3Url(storagePath);
+      return useDirect ? storagePath : this.getProxiedS3Url(storagePath);
     }
     const s3Endpoint = import.meta.env.VITE_S3_ENDPOINT || 'https://s3.twcstorage.ru';
     const s3Bucket = import.meta.env.VITE_S3_BUCKET || 'media';
     const fullUrl = `${s3Endpoint}/${s3Bucket}/${storagePath}`;
-    return this.getProxiedS3Url(fullUrl);
+    return useDirect ? fullUrl : this.getProxiedS3Url(fullUrl);
   }
 
   async getTelegramFileUrl(fileId: string, courseId: string): Promise<string> {
@@ -346,6 +346,18 @@ export class ApiClient {
     if (!response.ok) throw new Error(`Failed to fetch Telegram file: ${response.status}`);
     const blob = await response.blob();
     return URL.createObjectURL(blob);
+  }
+
+  getDirectS3Url(storagePath: string): string {
+    if (!storagePath) return storagePath;
+
+    if (storagePath.startsWith('http')) {
+      return storagePath;
+    }
+
+    const s3Endpoint = import.meta.env.VITE_S3_ENDPOINT || 'https://s3.twcstorage.ru';
+    const s3Bucket = import.meta.env.VITE_S3_BUCKET || 'media';
+    return `${s3Endpoint}/${s3Bucket}/${storagePath}`;
   }
 
   getProxiedS3Url(s3Url: string): string {
