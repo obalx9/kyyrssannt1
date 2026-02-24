@@ -329,15 +329,12 @@ export class ApiClient {
 
   getMediaUrl(storagePath: string): string {
     if (storagePath.startsWith('http')) {
-      if (storagePath.includes('s3.twcstorage.ru')) {
-        return `${API_URL}/api/s3/proxy?url=${encodeURIComponent(storagePath)}`;
-      }
-      return storagePath;
+      return this.getProxiedS3Url(storagePath);
     }
     const s3Endpoint = import.meta.env.VITE_S3_ENDPOINT || 'https://s3.twcstorage.ru';
     const s3Bucket = import.meta.env.VITE_S3_BUCKET || 'media';
     const fullUrl = `${s3Endpoint}/${s3Bucket}/${storagePath}`;
-    return `${API_URL}/api/s3/proxy?url=${encodeURIComponent(fullUrl)}`;
+    return this.getProxiedS3Url(fullUrl);
   }
 
   async getTelegramFileUrl(fileId: string, courseId: string): Promise<string> {
@@ -349,6 +346,26 @@ export class ApiClient {
     if (!response.ok) throw new Error(`Failed to fetch Telegram file: ${response.status}`);
     const blob = await response.blob();
     return URL.createObjectURL(blob);
+  }
+
+  getProxiedS3Url(s3Url: string): string {
+    if (!s3Url) return s3Url;
+
+    // If it's an S3 URL, proxy it through backend
+    if (s3Url.includes('s3.twcstorage.ru')) {
+      try {
+        const url = new URL(s3Url);
+        const pathParts = url.pathname.split('/').filter(p => p);
+        // Remove bucket name (first part) and get the rest as the key
+        const s3Key = pathParts.slice(1).join('/');
+        return `${API_URL}/api/s3/proxy/${s3Key}`;
+      } catch (e) {
+        console.error('Failed to parse S3 URL:', e);
+        return s3Url;
+      }
+    }
+
+    return s3Url;
   }
 
   buildTelegramFileUrl(fileId: string, courseId: string): string {
