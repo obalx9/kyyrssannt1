@@ -255,6 +255,7 @@ export default function MediaGallery({ items, courseId, onMediaClick, courseWate
           </div>
         );
       })}
+    
     </div>
   );
 }
